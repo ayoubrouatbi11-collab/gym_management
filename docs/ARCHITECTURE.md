@@ -24,12 +24,20 @@ flowchart TD
     M --> FE
     A --> FE
 
-    FE[React Frontend<br/>Vite + React Router]
-    FE -->|HTTP Requests / JSON<br/>Session Cookies| BE
+    FE[React Frontend<br/>Vite + React Router + Fetch API]
+    FE -->|HTTP Requests / JSON<br/>Session Cookies| FILT
 
-    BE[Java Backend<br/>Servlets + Filters]
-    BE --> DAO[DAO Layer<br/>JDBC + PreparedStatement]
-    DAO --> DB[(MySQL Database<br/>7 Tables)]
+    subgraph Backend [Jakarta EE 10 / Tomcat 10.1 Backend]
+        FILT[Filters<br/>CorsFilter + AuthFilter]
+        FILT --> SERV[Servlet Layer<br/>BaseServlet + 8 Domain Servlets]
+        SERV --> DTO[DTO Layer<br/>Request & Response DTOs]
+        SERV --> VAL[Validator Layer<br/>Domain Validators]
+        SERV --> SRV[Service Layer<br/>Business Logic + Transactions + Lock Management]
+        SRV --> DAO[DAO Layer<br/>JDBC + PreparedStatement]
+        SRV --> MOD[Model Layer<br/>Entities + Enums]
+    end
+
+    DAO --> DB[(MySQL Database<br/>8 InnoDB Tables)]
 ```
 
 ## 2. Frontend Architecture
@@ -160,12 +168,13 @@ Client-side route protection using `ProtectedRoute.jsx`.
 
 ### 3.2 Backend Responsibilities
 
-- Receiving and validating HTTP requests.
-- Authenticating users and managing HTTP sessions.
-- Enforcing role-based authorization (`PUBLIC`, `MEMBER`, `ADMIN`).
-- Enforcing business rules (dynamic subscription validity, bookable future classes, capacity checks, soft delete).
-- Executing database operations using `PreparedStatement` and managing transactions.
-- Returning standardized JSON responses.
+- Receiving and validating HTTP requests through dedicated DTOs and Validators.
+- Authenticating users and managing HTTP sessions securely.
+- Enforcing role-based authorization (`PUBLIC`, `MEMBER`, `ADMIN`) via filters and service checks.
+- Enforcing core business rules in the Service layer (dynamic subscription validity, bookable future classes, class capacity locks, soft delete).
+- Managing transaction boundaries (`connection.setAutoCommit(false)`) and pessimistic row locking (`SELECT ... FOR UPDATE`) in service methods.
+- Executing isolated database operations using `PreparedStatement` within DAOs.
+- Centralizing exception handling through typed `AppException` subclasses and returning standardized JSON responses.
 
 ### 3.3 Backend Folder Structure
 
@@ -177,72 +186,205 @@ backend/
     └── main/
         ├── java/
         │   └── com/fitsphere/
-        │       ├── model/
-        │       ├── dao/
-        │       ├── servlet/
         │       ├── config/
+        │       │   ├── AppConfig.java
+        │       │   ├── DatabaseConfig.java
+        │       │   └── DatabaseConnection.java
+        │       │
+        │       ├── model/
+        │       │   ├── enums/
+        │       │   │   ├── Role.java
+        │       │   │   ├── AccountStatus.java
+        │       │   │   ├── SubscriptionStatus.java
+        │       │   │   ├── ClassStatus.java
+        │       │   │   ├── BookingStatus.java
+        │       │   │   ├── PaymentStatus.java
+        │       │   │   ├── PaymentMethod.java
+        │       │   │   ├── AuditAction.java
+        │       │   │   └── EntityType.java
+        │       │   │
+        │       │   ├── User.java
+        │       │   ├── Trainer.java
+        │       │   ├── MembershipPlan.java
+        │       │   ├── Subscription.java
+        │       │   ├── GymClass.java
+        │       │   ├── Booking.java
+        │       │   ├── Payment.java
+        │       │   └── AuditLog.java
+        │       │
+        │       ├── dto/
+        │       │   ├── request/
+        │       │   │   ├── LoginRequest.java
+        │       │   │   ├── MemberCreateRequest.java
+        │       │   │   ├── MemberUpdateRequest.java
+        │       │   │   ├── PasswordChangeRequest.java
+        │       │   │   ├── TrainerRequest.java
+        │       │   │   ├── PlanRequest.java
+        │       │   │   ├── ClassRequest.java
+        │       │   │   ├── SubscriptionRenewRequest.java
+        │       │   │   └── BookingCreateRequest.java
+        │       │   │
+        │       │   └── response/
+        │       │       ├── AuthUserResponse.java
+        │       │       ├── UserResponse.java
+        │       │       ├── TrainerResponse.java
+        │       │       ├── PlanResponse.java
+        │       │       ├── SubscriptionResponse.java
+        │       │       ├── PaymentResponse.java
+        │       │       ├── GymClassResponse.java
+        │       │       ├── BookingResponse.java
+        │       │       ├── MessageResponse.java
+        │       │       └── ErrorResponse.java
+        │       │
+        │       ├── dao/
+        │       │   ├── UserDAO.java
+        │       │   ├── TrainerDAO.java
+        │       │   ├── MembershipPlanDAO.java
+        │       │   ├── SubscriptionDAO.java
+        │       │   ├── GymClassDAO.java
+        │       │   ├── BookingDAO.java
+        │       │   ├── PaymentDAO.java
+        │       │   └── AuditLogDAO.java
+        │       │
+        │       ├── service/
+        │       │   ├── AuthService.java
+        │       │   ├── UserService.java
+        │       │   ├── TrainerService.java
+        │       │   ├── PlanService.java
+        │       │   ├── SubscriptionService.java
+        │       │   ├── PaymentService.java
+        │       │   ├── GymClassService.java
+        │       │   ├── BookingService.java
+        │       │   └── AuditService.java
+        │       │
+        │       ├── validator/
+        │       │   ├── UserValidator.java
+        │       │   ├── TrainerValidator.java
+        │       │   ├── PlanValidator.java
+        │       │   ├── SubscriptionValidator.java
+        │       │   ├── GymClassValidator.java
+        │       │   └── BookingValidator.java
+        │       │
+        │       ├── exception/
+        │       │   ├── AppException.java
+        │       │   ├── ValidationException.java
+        │       │   ├── AuthenticationException.java
+        │       │   ├── AuthorizationException.java
+        │       │   ├── ResourceNotFoundException.java
+        │       │   ├── ConflictException.java
+        │       │   └── DatabaseException.java
+        │       │
+        │       ├── servlet/
+        │       │   ├── BaseServlet.java
+        │       │   ├── AuthServlet.java
+        │       │   ├── UserServlet.java
+        │       │   ├── TrainerServlet.java
+        │       │   ├── PlanServlet.java
+        │       │   ├── SubscriptionServlet.java
+        │       │   ├── PaymentServlet.java
+        │       │   ├── GymClassServlet.java
+        │       │   └── BookingServlet.java
+        │       │
         │       ├── filter/
+        │       │   ├── CorsFilter.java
+        │       │   └── AuthFilter.java
+        │       │
         │       └── util/
+        │           ├── PasswordUtil.java
+        │           ├── JsonUtil.java
+        │           ├── DateUtil.java
+        │           └── ServletUtil.java
         │
         └── webapp/
             └── WEB-INF/
                 └── web.xml
 ```
 
-### 3.4 Backend Layers
+### 3.4 Layer Architecture & Separation of Concerns
 
-#### Model Layer
-Plain Java Objects (POJOs) representing the 7 database entities:
-- `User`
-- `Trainer`
-- `MembershipPlan`
-- `Subscription`
-- `GymClass`
-- `Booking`
-- `Payment`
+The backend employs a decoupled enterprise architecture. Each layer has strict, non-overlapping responsibilities:
 
-#### DAO Layer
-Data Access Objects executing SQL via `PreparedStatement`:
-- `UserDAO`
-- `TrainerDAO`
-- `MembershipPlanDAO`
-- `SubscriptionDAO`
-- `GymClassDAO`
-- `BookingDAO`
-- `PaymentDAO`
+#### 1. Config Layer (`com.fitsphere.config`)
+- `DatabaseConfig.java`: Reads required database environment variables (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`) via `System.getenv(...)`. Throws `IllegalStateException` immediately if any variable is missing or blank, preventing silent misconfiguration.
+- `DatabaseConnection.java`: Manages thread-safe JDBC connection acquisition.
+  - **Connection Management Model:** Supports dual-mode connection vending:
+    - *Container Mode (Tomcat JNDI):* Looks up container-managed connection pool (`InitialContext().lookup("java:comp/env/jdbc/FitSphereDB")`) when deployed in Tomcat.
+    - *Standalone / Direct Mode:* Uses `DriverManager.getConnection(...)` with strict thread isolation.
+  - **Concurrency & Resource Safety:** Each incoming HTTP request thread acquires its own connection and releases it deterministically via `try-with-resources` (`AutoCloseable`). Connections are never shared across concurrent request threads.
+- `AppConfig.java`: Central application constants (CORS allowed origins, session timeout, BCrypt cost factor).
 
-#### Servlet Layer
-HTTP request controllers dispatching actions and serializing JSON via Gson:
-- `AuthServlet` (`/api/auth/*`)
-- `UserServlet` (`/api/users/*`, `/api/admin/members/*`)
-- `TrainerServlet` (`/api/trainers/*`)
-- `PlanServlet` (`/api/plans/*`)
-- `SubscriptionServlet` (`/api/subscriptions/*`)
-- `PaymentServlet` (`/api/payments/*` — handles administrative payment retrieval and audit queries)
-- `GymClassServlet` (`/api/classes/*`)
-- `BookingServlet` (`/api/bookings/*`)
+#### 2. Model Layer (`com.fitsphere.model`)
+POJOs representing persistent domain entities and type-safe Java enums:
+- **Entities:** `User`, `Trainer`, `MembershipPlan`, `Subscription`, `GymClass`, `Booking`, `Payment`, `AuditLog`.
+- **Enums (`model.enums`):**
+  - `Role` (`ADMIN`, `MEMBER`)
+  - `AccountStatus` (`ACTIVE`, `INACTIVE`)
+  - `SubscriptionStatus` (`ACTIVE`, `EXPIRED`, `CANCELLED`)
+  - `ClassStatus` (`SCHEDULED`, `CANCELLED`, `COMPLETED`)
+  - `BookingStatus` (`BOOKED`, `CANCELLED`)
+  - `PaymentStatus` (`PAID`, `CANCELLED`)
+  - `PaymentMethod` (`CASH`, `CARD`)
+  - `AuditAction` (`MEMBER_CREATED`, `MEMBER_DEACTIVATED`, `PLAN_DEACTIVATED`, `TRAINER_DEACTIVATED`, `CLASS_CANCELLED`, `SUBSCRIPTION_CANCELLED`, `BOOKING_CANCELLED`)
+  - `EntityType` (`USER`, `PLAN`, `TRAINER`, `CLASS`, `SUBSCRIPTION`, `BOOKING`)
 
-#### Config Layer
-Database connection pool and configuration (`DatabaseConfig.java` / `DatabaseConnection.java`):
-- Required environment variables: `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`.
-- Read configuration using `System.getenv(...)`. Variables may be configured via workstation environment variables or Apache Tomcat's `bin/setenv.bat` (Windows) / `bin/setenv.sh` (Linux).
-- If any required environment variable is missing or blank, `DatabaseConfig` must immediately throw a descriptive `IllegalStateException` (e.g., `"Missing required database environment variable: DB_PASSWORD"`).
-- Never use hardcoded database credentials or default passwords.
-- Provides thread-safe JDBC connections closed via try-with-resources.
+#### 3. DTO Layer (`com.fitsphere.dto`)
+Data Transfer Objects that cleanly isolate internal database representations from external HTTP JSON payloads.
+- **Request DTOs:** Capture and type-cast incoming JSON payloads (e.g., `MemberCreateRequest` encapsulating the 3-in-1 member, plan, and payment input; `BookingCreateRequest`).
+- **Response DTOs:** Ensure sensitive fields (e.g., BCrypt password hashes) are never exposed. Produce clean response structures matching `docs/API_CONTRACT.md` exactly.
 
-#### Filter Layer
-Cross-cutting HTTP filters:
-- `AuthFilter`: Enforces session validation and role authorization (`PUBLIC`, `MEMBER`, `ADMIN`), blocking unauthorized access before reaching servlets.
-- `CorsFilter`: Configured for decoupled frontend-backend communication:
-  - `Access-Control-Allow-Origin: http://localhost:3000`
-  - `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
-  - `Access-Control-Allow-Headers: Content-Type, Accept`
-  - `Access-Control-Allow-Credentials: true`
-  - Intercepts and immediately answers HTTP `OPTIONS` preflight requests with `200 OK` and an empty body.
+#### 4. Validator Layer (`com.fitsphere.validator`)
+Dedicated validator classes that verify structural integrity, email formats, positive numeric ranges, non-blank strings, and date relationships before domain execution:
+- `UserValidator`: Validates name lengths, email regex, phone formatting, and password constraints (minimum 6 characters, no whitespace).
+- `SubscriptionValidator`: Ensures `startDate` and `durationMonths` are positive and valid.
+- `GymClassValidator`: Ensures `capacity > 0`, `end_time > start_time`, and valid date/time logic.
+- `BookingValidator`: Checks booking input parameters.
+- When validation fails, validators throw typed `ValidationException` with field-specific errors, mapped to `400 Bad Request` and `INVALID_INPUT`.
 
-#### Util Layer
-- `PasswordUtil`: BCrypt hashing and verification. Enforces minimum 6-character length without whitespace.
-- `JsonUtil`: Standardized JSON serialization using Gson adhering to `docs/API_CONTRACT.md`.
+#### 5. Exception Layer (`com.fitsphere.exception`)
+Hierarchical typed exceptions mapping directly to HTTP status codes and contract error codes:
+- `AppException`: Base unchecked application exception containing `errorCode` and HTTP status.
+- `ValidationException` (HTTP 400, `INVALID_INPUT` / `VALIDATION_ERROR`)
+- `AuthenticationException` (HTTP 401, `UNAUTHORIZED` / `INVALID_CREDENTIALS`)
+- `AuthorizationException` (HTTP 403, `FORBIDDEN`)
+- `ResourceNotFoundException` (HTTP 404, `USER_NOT_FOUND`, `CLASS_NOT_FOUND`, etc.)
+- `ConflictException` (HTTP 409, `DUPLICATE_EMAIL`, `CLASS_FULL`, `DUPLICATE_BOOKING`)
+- `DatabaseException` (HTTP 500, `DATABASE_ERROR`)
+
+#### 6. Service Layer (`com.fitsphere.service`)
+Core domain orchestrator where business logic, transaction boundaries, and pessimistic locks are managed:
+- **`UserService`:** Coordinates the atomic 3-in-1 member registration transaction (`User` + `Subscription` + `Payment` + `AuditLog`). Manages profile updates and soft delete (`account_status = 'INACTIVE'`).
+- **`SubscriptionService`:** Computes dynamic subscription validity (`status = 'ACTIVE'` and `CURRENT_DATE BETWEEN start_date AND end_date`). Coordinates atomic subscription renewal transactions (`Subscription` + `Payment` + `AuditLog`).
+- **`BookingService`:** Executes the 8-step booking engine with transaction boundaries and pessimistic class row locking (`SELECT ... FOR UPDATE`), active subscription checks, capacity deduction, cancellation, and rebooking.
+- **`GymClassService`:** Evaluates dynamic `isBookable` status, manages class creation, updates, and cancellations.
+- **`TrainerService` & `PlanService`:** Handles CRUD and soft-deletion (`is_active = FALSE`).
+- **`PaymentService`:** Audits and queries physical payment records.
+- **`AuditService`:** Manages immutable audit logs. Enforces atomic execution inside the caller's business transaction (`connection.setAutoCommit(false)`), and sanitizes details to guarantee that no credentials, passwords, or tokens are ever persisted.
+
+#### 7. DAO Layer (`com.fitsphere.dao`)
+Pure JDBC data access objects without unnecessary generic abstractions (`BaseDAO` omitted in favor of explicit, type-safe JDBC methods).
+- DAOs execute parameterized SQL via `PreparedStatement` and map `ResultSet` rows to domain entities.
+- DAOs accept either a standalone connection or an external transactional `Connection` passed from the Service layer, allowing multi-table mutations to share an atomic transaction boundary.
+- All SQL statements use parameterized queries (`?`) to prevent SQL injection.
+
+#### 8. Servlet Layer (`com.fitsphere.servlet`)
+Thin HTTP controllers extending `BaseServlet`:
+- **`BaseServlet`:** Indispensable base controller that eliminates cross-cutting boilerplate across all 8 domain servlets:
+  - Centralized request body deserialization via `JsonUtil.fromJson(request.getReader(), ...)`.
+  - Standardized JSON response generation (`Content-Type: application/json; charset=UTF-8`).
+  - Session identity extraction (`getAuthenticatedUser(request)`, `requireRole(request, Role...)`).
+  - Path parameter parsing (e.g. extracting numeric IDs from `/api/users/{id}`).
+  - Centralized error handling: Catches `AppException` subclasses and translates them into uniform error envelopes `{ "error": "...", "message": "..." }` with matching HTTP status codes (`400`, `401`, `403`, `404`, `409`, `500`).
+- Domain servlets (`AuthServlet`, `UserServlet`, `TrainerServlet`, `PlanServlet`, `SubscriptionServlet`, `PaymentServlet`, `GymClassServlet`, `BookingServlet`) handle URL path routing, DTO extraction, delegate to the corresponding Service, and return responses.
+
+#### 9. Filter Layer (`com.fitsphere.filter`)
+- `AuthFilter`: Enforces server-side session authentication and role validation (`PUBLIC`, `MEMBER`, `ADMIN`), protecting secure endpoints.
+- `CorsFilter`: Handles CORS headers for `http://localhost:3000` with `Access-Control-Allow-Credentials: true` and responds to `OPTIONS` preflight requests immediately with `200 OK`.
+
+#### 10. Util Layer (`com.fitsphere.util`)
+- `PasswordUtil`: BCrypt hashing and verification.
+- `JsonUtil`: Gson serialization configured with ISO date adapters.
+- `DateUtil`: Date arithmetic (e.g. `startDate.plusMonths(duration).minusDays(1)`).
+- `ServletUtil`: HTTP request parameter extraction and path parsing.
 
 ## 4. Workflows & Communication
 

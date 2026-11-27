@@ -38,7 +38,7 @@ The team follows a **Role-Based Full-Stack Ownership** model. Each developer is 
 | **Backend Servlets** | Implements role-specific servlet endpoints and controller logic. | Adherence to shared response conventions and error structures. |
 | **Database Design & Setup** | **Developer 3:** Exclusive owner of MySQL database creation, `database/schema.sql`, `database/seed.sql`, constraints, indexes, and connection setup (`DB-01` to `DB-04`). | Developers 1 and 2 coordinate any query/schema needs with Developer 3; no independent schema modifications. |
 | **Authentication & Security** | **Developer 1 (Lead):** Implements `PasswordUtil` & `AuthServlet`.<br>**Developer 2 (Lead):** Implements `AuthFilter` & `CorsFilter`. | **Shared:** Session attributes (`userId`, `role`), cookies, response envelopes, and mutual review. |
-| **Shared Models & Utilities**| **Developer 3 (Lead):** Implements base POJO models (`BASE-01`) and `JsonUtil` (`BASE-02`). | **Shared:** Modifying a shared model requires coordination to avoid breaking teammates' queries. |
+| **Shared Models & Utilities**| **Developer 3 (Lead):** Implements base POJO models (`BASE-01`), enums, `JsonUtil` & `DateUtil` (`BASE-02`), and DTOs (`BASE-03`).<br>**Developer 2 (Lead):** Implements validators & exceptions (`BASE-04`), and `BaseServlet` (`BASE-05`). | **Shared:** Modifying a shared model or base controller requires peer review and approval before merging. |
 | **API Contract** | Follows the endpoints specified for their assigned role. | **Shared:** `docs/API_CONTRACT.md` must be agreed upon before any endpoint changes. |
 | **Common UI Elements**| Uses components from `components/common/`. | **Shared:** Enhancements to common buttons, inputs, headers, or modal dialogs. |
 
@@ -251,7 +251,7 @@ All HTTP communication between React (running on `http://localhost:3000`) and To
   ```
 
 ### 7.3 Database Coordination
-- All 7 database tables are defined in [`docs/DATABASE_SCHEMA.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DATABASE_SCHEMA.md).
+- All 8 database tables are defined in [`docs/DATABASE_SCHEMA.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DATABASE_SCHEMA.md).
 - Developers must never alter table structures or column names in their DAOs without team consensus and a synchronized update to `docs/DATABASE_SCHEMA.md` and `database/schema.sql`.
 
 ---
@@ -272,7 +272,7 @@ To avoid merge conflicts, team members must coordinate when modifying shared fil
 | `frontend/src/components/common/` | Shared UI components | Create reusable elements; do not alter existing props without checking callers. |
 | `backend/src/main/java/com/fitsphere/config/` | Database configuration | Central connection pool / JDBC setup. |
 | `backend/src/main/java/com/fitsphere/filter/` | `AuthFilter` and `CorsFilter` | Security filters affecting all requests. |
-| `backend/src/main/java/com/fitsphere/model/` | Entity POJOs (`User`, `GymClass`, etc.) | Shared data models. Do not alter fields arbitrarily. |
+| `backend/src/main/java/com/fitsphere/model/` | Entity POJOs and Enums (`User`, `AuditLog`, etc.) | Shared data models. Do not alter fields arbitrarily. |
 | `backend/src/main/webapp/WEB-INF/web.xml` | Servlet mappings & configuration | Notify teammates when registering a new servlet mapping. |
 
 ### 8.2 Protocol for Shared File Edits

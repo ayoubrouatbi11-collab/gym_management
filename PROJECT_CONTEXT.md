@@ -29,18 +29,19 @@ The goal is to build a simple, reliable, and maintainable gym management platfor
 ### Backend
 - Java 17
 - Java Servlets (Jakarta Servlet 6.0)
-- JDBC
+- JDBC (PreparedStatement, thread-safe connections)
 - Apache Tomcat 10.1
 - Maven
 - Gson
 - BCrypt
+- 10-layer enterprise architecture: `config`, `model` (entities + enums), `dto` (request/response), `dao`, `service` (business logic + transaction boundaries), `validator`, `exception` (typed AppException hierarchy), `servlet` (BaseServlet + domain controllers), `filter`, `util`
 
 ### Database
-- MySQL
+- MySQL 8.0.16+ (8.0.16+ required for enforced CHECK constraints)
 - MySQL Connector/J
 - InnoDB storage engine
-- Foreign keys and transactions
-- 7 tables: `users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`
+- Foreign keys, domain check constraints, indexes, and transactions
+- 8 tables: `users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`, `audit_logs`
 
 ### Authentication
 - HTTP sessions (`HttpSession`)

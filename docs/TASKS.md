@@ -22,8 +22,8 @@ The team operates on a **Role-Based Full-Stack Ownership** model:
 |---|---|---|
 | **Visitor / Public** | **Developer 1** | Public homepage, navigation, gym services, trainer listing, pricing plans, public class schedule, login UI, and corresponding public backend endpoints. |
 | **Administrator** | **Developer 2** | Admin dashboard, unified member creation, member CRUD, trainer CRUD, plan CRUD, subscription renewal, payment audit tracking, class management, administrative booking oversight, and admin-only backend servlets. |
-| **Member & Database** | **Developer 3** | **Dual Responsibility:**<br>1. **Database Owner:** MySQL database creation, `database/schema.sql`, `seed.sql`, 7 tables, constraints, indexes, and connection verification.<br>2. **Member Features:** Member dashboard, profile editing, password change, subscription history, class booking with row locking, personal booking history, cancellation, and member servlets. |
-| **Shared Core** | **Shared (All 3)** | Database connectivity setup, shared models, base DAOs, authentication/session management (`AuthServlet`, `AuthFilter`), API contract coordination, and integration testing. |
+| **Member & Database** | **Developer 3** | **Dual Responsibility:**<br>1. **Database Owner:** MySQL database creation, `database/schema.sql`, `seed.sql`, 8 tables, constraints, indexes, and connection verification.<br>2. **Member Features:** Member dashboard, profile editing, password change, subscription history, class booking with row locking, personal booking history, cancellation, and member servlets. |
+| **Shared Core** | **Shared (All 3)** | Database connectivity setup, shared models, DTOs, BaseServlet, authentication/session management (`AuthServlet`, `AuthFilter`), API contract coordination, and integration testing. |
 
 ### Database Ownership and Coordination Rules
 - **Developer 3 is the exclusive owner of database creation and setup.**
@@ -33,12 +33,13 @@ The team operates on a **Role-Based Full-Stack Ownership** model:
 
 ### Shared Backend Implementation Leads & Coordination Rules
 To prevent ambiguity, merge collisions, or implementation deadlock while maintaining shared architectural standards, the team has designated specific **primary implementation leads** for foundational backend tasks:
-- **Developer 3 (Lead):** Implements `DB-04` (`DatabaseConfig.java` / `DatabaseConnection.java`), `BASE-01` (POJO entity models), and `BASE-02` (`JsonUtil.java`). Developer 3 remains the **exclusive database owner** (`DB-01` through `DB-03`).
-- **Developer 1 (Lead):** Implements `AUTH-01` (`PasswordUtil.java`) and `AUTH-02` (`AuthServlet.java`), driving session login, logout, and session identity endpoints aligned with the visitor login UI.
-- **Developer 2 (Lead):** Implements `AUTH-03` (`AuthFilter.java` and `CorsFilter.java`), establishing server-side role validation, CORS preflight handling, and security filters for admin-protected and member routes.
+- **Developer 3 (Lead):** Implements `DB-04` (`DatabaseConfig.java` / `DatabaseConnection.java`), `BASE-01` (POJO entity models & enums), `BASE-02` (`JsonUtil.java` & `DateUtil.java`), and `BASE-03` (DTOs). Developer 3 remains the **exclusive database owner** (`DB-01` through `DB-03`).
+- **Developer 2 (Lead):** Implements `BASE-04` (Validators & `AppException` hierarchy), `BASE-05` (`BaseServlet.java`), and `AUTH-03` (`AuthFilter.java` and `CorsFilter.java`), establishing server-side role validation, CORS preflight handling, and security filters for admin-protected and member routes.
+- **Developer 1 (Lead):** Implements `AUTH-01` (`PasswordUtil.java` — sole owner of password hashing, verification, and policy enforcement) and `AUTH-02` (`AuthServlet.java`), driving session login, logout, and session identity endpoints aligned with the visitor login UI.
 
-**Important Coordination Rules:**
+**Important Coordination & Review Rules:**
 - These assignments designate **primary implementation leads**, not permission to change shared architecture or database models independently.
+- **Mandatory Peer Review for Shared Code:** Any Pull Request introducing or modifying shared foundation code (`BASE-01` through `BASE-05`, `AUTH-01` through `AUTH-03`, `DB-04`) requires mandatory review and approval from at least one other affected developer before merging into `development`.
 - Shared authentication/session behavior, interfaces, session attribute keys (e.g. `userId`, `role`), JSON response formats, and integration points must be strictly coordinated between the relevant developers.
 - All implementations must strictly conform to [`docs/API_CONTRACT.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/API_CONTRACT.md), [`docs/ARCHITECTURE.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/ARCHITECTURE.md), and [`docs/DATABASE_SCHEMA.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DATABASE_SCHEMA.md).
 
@@ -51,8 +52,9 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
           │
           ▼
 [Phase 2: Database & Base Backend]
- ├── Developer 3: DB Setup (DB-01, 02, 03) ──────────────┐
- └── Shared: Connection & Models (DB-04, BASE-01, 02) ◄──┘
+ ├── Developer 3: DB Setup (DB-01, 02, 03) ───────────────────┐
+ ├── Developer 3: Connection, Models & DTOs (DB-04, BASE-01..03)◄─┤
+ └── Developer 2: Validators & BaseServlet (BASE-04, 05) ◄─────┘
           │
           ▼
 [Phase 3: Authentication & Security] (AUTH-01 to 05)
@@ -76,8 +78,9 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
                      [Phase 9: Final Demo Release] (REL-01 to 03)
 ```
 
-### Parallel Development Opportunities
-- While Developer 3 implements the database schema (`DB-01`–`DB-03`), Developers 1 and 2 can build frontend page layouts and static UI components using mock data.
+### Parallel Development Opportunities & Frontend Mocking
+- **Frontend Mock-Data vs. Live Backend Hookup:** Frontend UI tasks (e.g. `VIS-04`, `VIS-06`, `VIS-08`, `ADM-03`, `ADM-05`, `MEM-06`) can proceed immediately with component markup, CSS styling, and local state management using mock data in their feature branches. The documented backend servlet dependencies apply specifically to the **live API integration and verification** step.
+- While Developer 3 implements the database schema (`DB-01`–`DB-03`), Developers 1 and 2 can build frontend page layouts and static UI components without waiting for live SQL endpoints.
 - Once Phase 3 (Authentication) is complete, **Phases 4, 5, and 6 can be developed simultaneously** by the three developers in their respective feature branches without blocking each other.
 
 ---
@@ -91,7 +94,7 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 | `INIT-01` | Monorepo Structure & Git Configuration | Shared | None | Root repository initialized with `README.md`, `.gitignore`, `.env.example`, and baseline documentation structure. | **Completed** |
 | `INIT-02` | React + Vite Frontend Initialization | Developer 1 & Shared | `INIT-01` | React app with React Router v6, folder structure, and service stubs compiles cleanly via `npm run build`. | **Completed** |
 | `INIT-03` | Java 17 + Tomcat 10.1 Maven Setup | Shared | `INIT-01` | `pom.xml` configured with Jakarta Servlet 6.0, MySQL Connector/J, Gson, jBCrypt; `web.xml` configured for sessions. | **Completed** |
-| `INIT-04` | Local Developer Environment Verification | Shared | `INIT-02`, `INIT-03` | Each developer verifies local Java 17/25 JDK, Node.js, and local `.env` configuration. | **Completed** |
+| `INIT-04` | Local Developer Environment Verification | Shared | `INIT-02`, `INIT-03` | Each developer verifies local Java 17 JDK (or JDK runtime configured with `--release 17`), Node.js, and local `.env` configuration. | **Completed** |
 
 ---
 
@@ -99,12 +102,15 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 
 | Task ID | Task Title | Owner | Dependencies | Completion Criteria | Status |
 |---|---|---|---|---|:---:|
-| `DB-01` | MySQL Database & Table Schema Definition | **Developer 3** | `INIT-04` | `database/schema.sql` written with all 7 tables (`users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`) using InnoDB and utf8mb4. | Not Started |
-| `DB-02` | Table Constraints, Foreign Keys & Indexes | **Developer 3** | `DB-01` | Primary keys, foreign keys (`RESTRICT` policies), unique indexes (`users.email`, `plans.name`, `payments.subscription_id`), and query indexes implemented in `schema.sql`. | Not Started |
+| `DB-01` | MySQL Database & Table Schema Definition | **Developer 3** | `INIT-04` | `database/schema.sql` written with all 8 tables (`users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`, `audit_logs`) using InnoDB and utf8mb4. | Not Started |
+| `DB-02` | Table Constraints, Foreign Keys & Indexes | **Developer 3** | `DB-01` | Primary keys, foreign keys (`RESTRICT` policies), unique indexes (`users.email`, `plans.name`, `payments.subscription_id`, `payments.receipt_number`), composite foreign key `(subscription_id, user_id)`, domain check constraints (MySQL 8.0.16+), and performance indexes implemented in `schema.sql`. | Not Started |
 | `DB-03` | Demo Seed Data Script Implementation | **Developer 3** | `DB-02` | `database/seed.sql` prepared with sample admin, members, trainers, plans, classes, and initial payments with BCrypt password hashes. | Not Started |
 | `DB-04` | Database Connection Lifecycle & Config | **Developer 3 (Lead)** | `DB-02` | Java `DatabaseConfig.java` implemented to load credentials from environment variables (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`), throwing `IllegalStateException` on missing variables, and providing thread-safe JDBC connections. | Not Started |
-| `BASE-01`| Shared Java Entity Models (POJOs) | **Developer 3 (Lead)** | `DB-02` | Models created in `com.fitsphere.model` for all 7 entities with getters, setters, constructors, and matching camelCase properties. | Not Started |
-| `BASE-02`| JSON Serialization & Base Utility Setup | **Developer 3 (Lead)** | `INIT-03` | `JsonUtil.java` configured with Gson for standardized response envelopes; `PasswordUtil.java` configured for BCrypt hashing. | Not Started |
+| `BASE-01`| Shared Java Entity Models (POJOs) & Enums | **Developer 3 (Lead)** | `DB-02` | Models created in `com.fitsphere.model` for all 8 entities (`User`, `Trainer`, `MembershipPlan`, `Subscription`, `GymClass`, `Booking`, `Payment`, `AuditLog`) and type-safe enums in `com.fitsphere.model.enums`. | Not Started |
+| `BASE-02`| JSON Serialization & Base Utility Setup | **Developer 3 (Lead)** | `INIT-03` | `JsonUtil.java` configured with Gson for standardized response envelopes; `DateUtil.java` configured for calendar math. | Not Started |
+| `BASE-03`| Request & Response DTO Layer Setup | **Developer 3 (Lead)** | `BASE-01` | Request and response DTOs implemented in `com.fitsphere.dto` adhering strictly to `docs/API_CONTRACT.md` schemas, decoupling API representations from internal database models. | Not Started |
+| `BASE-04`| Validators & Typed Exception Hierarchy | **Developer 2 (Lead)** | `BASE-03` | Domain validators in `com.fitsphere.validator` and typed `AppException` hierarchy in `com.fitsphere.exception` mapping domain failures to HTTP status codes and contract error codes. | Not Started |
+| `BASE-05`| BaseServlet Foundation Controller | **Developer 2 (Lead)** | `BASE-04` | `BaseServlet.java` implemented in `com.fitsphere.servlet` providing centralized JSON writing, parameter parsing, session identity extraction, and unified `AppException` error handling. | Not Started |
 
 ---
 
@@ -112,7 +118,7 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 
 | Task ID | Task Title | Owner | Dependencies | Completion Criteria | Status |
 |---|---|---|---|---|:---:|
-| `AUTH-01`| BCrypt Password Hashing & Verification | **Developer 1 (Lead)** | `BASE-02` | `PasswordUtil` verifies candidate passwords against stored BCrypt hashes, enforcing minimum 6-character length and no whitespace. | Not Started |
+| `AUTH-01`| BCrypt Password Hashing & Verification | **Developer 1 (Lead)** | `INIT-03` | `PasswordUtil.java` implemented to verify candidate passwords against stored BCrypt hashes and hash new passwords with BCrypt, enforcing minimum 6-character length and no whitespace. | Not Started |
 | `AUTH-02`| Login, Session Identity & Logout Servlets | **Developer 1 (Lead)** | `BASE-01`, `DB-04` | `AuthServlet` implements `POST /auth/login`, `GET /auth/me`, and `POST /auth/logout` managing standard `HttpSession` and session cookies. | Not Started |
 | `AUTH-03`| Role Security Filter & CORS Configuration | **Developer 2 (Lead)** | `AUTH-02` | `AuthFilter` and `CorsFilter` intercept requests, enforce server-side role validation (`ADMIN`, `MEMBER`), handle `OPTIONS` preflight, and set `Access-Control-Allow-Credentials: true`. | Not Started |
 | `AUTH-04`| Frontend AuthContext & Session Hook | Shared | `AUTH-02` | `AuthContext.jsx` restores user state via `GET /auth/me` on mount, handles `login` and `logout`, exposing `useAuth()` hook. | **Completed** |
@@ -126,11 +132,11 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 |---|---|---|---|---|:---:|
 | `VIS-01` | Public Navigation Bar, Footer & Layout Shell | **Developer 1** | `INIT-02` | Responsive public header, navigation links, and footer implemented in `features/visitor`. | Not Started |
 | `VIS-02` | Public Homepage & Facilities Presentation | **Developer 1** | `VIS-01` | Homepage displaying hero banner, gym facilities, services, and call-to-action sections. | Not Started |
-| `VIS-03` | Backend Public Trainers Endpoint | **Developer 1** | `BASE-01`, `DB-04` | `TrainerServlet` handles `GET /trainers` (active only) and `GET /trainers/{id}` returning JSON arrays. | Not Started |
+| `VIS-03` | Backend Public Trainers Endpoint | **Developer 1** | `BASE-01`, `DB-04`, `BASE-05` | `TrainerServlet` handles `GET /trainers` (active only) and `GET /trainers/{id}` returning JSON arrays. | Not Started |
 | `VIS-04` | Frontend Public Trainers Grid View | **Developer 1** | `VIS-03`, `VIS-01` | Public trainers page rendering trainer cards (photo placeholder, name, specialization, contact). | Not Started |
-| `VIS-05` | Backend Public Membership Plans Endpoint | **Developer 1** | `BASE-01`, `DB-04` | `PlanServlet` handles `GET /plans` (active only) and `GET /plans/{id}`. | Not Started |
+| `VIS-05` | Backend Public Membership Plans Endpoint | **Developer 1** | `BASE-01`, `DB-04`, `BASE-05` | `PlanServlet` handles `GET /plans` (active only) and `GET /plans/{id}`. | Not Started |
 | `VIS-06` | Frontend Public Pricing & Plans View | **Developer 1** | `VIS-05`, `VIS-01` | Public pricing page displaying membership plan cards with duration, price, and descriptions. | Not Started |
-| `VIS-07` | Backend Public Classes Endpoint | **Developer 1** | `BASE-01`, `DB-04` | `GymClassServlet` handles `GET /classes` and `GET /classes/{id}` calculating `isBookable` dynamically. | Not Started |
+| `VIS-07` | Backend Public Classes Endpoint | **Developer 1** | `BASE-01`, `DB-04`, `BASE-05` | `GymClassServlet` handles `GET /classes` and `GET /classes/{id}` calculating `isBookable` dynamically. | Not Started |
 | `VIS-08` | Frontend Public Class Schedule Calendar | **Developer 1** | `VIS-07`, `VIS-01` | Public class schedule displaying upcoming classes, dates, times, trainers, and status badges. | Not Started |
 | `VIS-09` | Frontend Login Interface | **Developer 1** | `AUTH-04`, `VIS-01` | Login form with email/password validation, error message alerts, and role-based redirect upon login. | Not Started |
 
@@ -141,21 +147,21 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 | Task ID | Task Title | Owner | Dependencies | Completion Criteria | Status |
 |---|---|---|---|---|:---:|
 | `ADM-01` | Admin Dashboard Layout & Stat Cards | **Developer 2** | `AUTH-03`, `AUTH-05` | Admin dashboard displaying summary metric cards (total members, active subscriptions, scheduled classes, bookings). | Not Started |
-| `ADM-02` | Backend Unified 3-in-1 Member Creation | **Developer 2** | `AUTH-03`, `DB-04` | `POST /users` creates `users`, `subscriptions`, and `payments` atomically in one transaction with all 8 mandatory fields. | Not Started |
+| `ADM-02` | Backend Unified 3-in-1 Member Creation | **Developer 2** | `AUTH-01`, `AUTH-03`, `DB-04`, `BASE-05` | `UserService` coordinates `POST /users` creating `users`, `subscriptions`, `payments` (with `recorded_by_admin_id` from session), and `audit_logs` atomically in one transaction with all 8 mandatory fields. | Not Started |
 | `ADM-03` | Frontend "Add New Member" Unified Form | **Developer 2** | `ADM-02`, `VIS-05` | Modal/page form collecting member details, plan selection, payment date, and amount with validation. | Not Started |
-| `ADM-04` | Backend Member Management & Soft Delete | **Developer 2** | `ADM-02` | `UserServlet` implements `GET /users`, `GET /users/{id}`, `PUT /users/{id}`, `PUT /users/{id}/status`, and `DELETE /users/{id}` (Soft Delete: `account_status = 'INACTIVE'`). | Not Started |
+| `ADM-04` | Backend Member Management & Soft Delete | **Developer 2** | `ADM-02` | `UserService` implements `GET /users`, `GET /users/{id}`, `PUT /users/{id}`, `PUT /users/{id}/status`, and `DELETE /users/{id}` (Soft Delete: `account_status = 'INACTIVE'`), recording actions in `audit_logs`. | Not Started |
 | `ADM-05` | Frontend Member Management Table & Details | **Developer 2** | `ADM-04` | Searchable table of members with status indicators, edit modal, and deactivation action. | Not Started |
-| `ADM-06` | Backend Trainer Administration Servlets | **Developer 2** | `VIS-03` | `TrainerServlet` implements `POST /trainers`, `PUT /trainers/{id}`, `PUT /trainers/{id}/status`, and `DELETE /trainers/{id}` (`is_active = FALSE`). | Not Started |
+| `ADM-06` | Backend Trainer Administration Servlets | **Developer 2** | `VIS-03`, `AUTH-03`, `BASE-05` | `TrainerServlet` implements `POST /trainers`, `PUT /trainers/{id}`, `PUT /trainers/{id}/status`, and `DELETE /trainers/{id}` (`is_active = FALSE`). | Not Started |
 | `ADM-07` | Frontend Trainer Management Interface | **Developer 2** | `ADM-06` | Admin interface to add, update, and deactivate gym trainers. | Not Started |
-| `ADM-08` | Backend Plan Administration Servlets | **Developer 2** | `VIS-05` | `PlanServlet` implements `POST /plans`, `PUT /plans/{id}`, `PUT /plans/{id}/status`, and `DELETE /plans/{id}` (`is_active = FALSE`). | Not Started |
+| `ADM-08` | Backend Plan Administration Servlets | **Developer 2** | `VIS-05`, `AUTH-03`, `BASE-05` | `PlanServlet` implements `POST /plans`, `PUT /plans/{id}`, `PUT /plans/{id}/status`, and `DELETE /plans/{id}` (`is_active = FALSE`). | Not Started |
 | `ADM-09` | Frontend Membership Plan Management View | **Developer 2** | `ADM-08` | Admin table to create, edit, and toggle active status of membership plans. | Not Started |
-| `ADM-10` | Backend Subscription Renewal & Administration | **Developer 2** | `DB-04`, `AUTH-03` | `SubscriptionServlet` implements `GET /subscriptions`, `POST /subscriptions` (atomic renewal with payment), and `PUT /subscriptions/{id}/cancel`. | Not Started |
+| `ADM-10` | Backend Subscription Renewal & Administration | **Developer 2** | `DB-04`, `AUTH-03`, `BASE-05` | `SubscriptionService` implements `GET /subscriptions`, `POST /subscriptions` (atomic renewal with payment, `recorded_by_admin_id`, and `audit_logs`), and `PUT /subscriptions/{id}/cancel`. | Not Started |
 | `ADM-11` | Frontend Subscription Management Interface | **Developer 2** | `ADM-10` | Subscriptions table with renewal modal and cancellation actions. | Not Started |
-| `ADM-12` | Backend Manual Payment Audit Endpoints | **Developer 2** | `DB-04`, `AUTH-03` | `PaymentServlet` implements `GET /payments`, `GET /payments/{id}`, and `GET /payments/subscription/{subscriptionId}`. | Not Started |
+| `ADM-12` | Backend Manual Payment Audit Endpoints | **Developer 2** | `DB-04`, `AUTH-03`, `BASE-05` | `PaymentServlet` implements `GET /payments`, `GET /payments/{id}`, and `GET /payments/subscription/{subscriptionId}`. | Not Started |
 | `ADM-13` | Frontend Payment Audit Log View | **Developer 2** | `ADM-12` | Admin table displaying verified manual payments, associated members, dates, and amounts. | Not Started |
-| `ADM-14` | Backend Gym Class Administration Servlets | **Developer 2** | `VIS-07` | `GymClassServlet` implements `POST /classes`, `PUT /classes/{id}`, `PUT /classes/{id}/cancel`, and `PUT /classes/{id}/complete`. | Not Started |
+| `ADM-14` | Backend Gym Class Administration Servlets | **Developer 2** | `VIS-07`, `AUTH-03`, `BASE-05` | `GymClassServlet` implements `POST /classes`, `PUT /classes/{id}`, `PUT /classes/{id}/cancel`, and `PUT /classes/{id}/complete`. | Not Started |
 | `ADM-15` | Frontend Gym Class Schedule Management | **Developer 2** | `ADM-14` | Admin view to create classes, assign trainers, set capacities, and cancel/complete sessions. | Not Started |
-| `ADM-16` | Backend Admin Booking Oversight Servlets | **Developer 2** | `DB-04`, `AUTH-03` | `BookingServlet` implements `GET /bookings` (all bookings with class filters) and `PUT /bookings/{id}/cancel`. | Not Started |
+| `ADM-16` | Backend Admin Booking Oversight Servlets | **Developer 2** | `DB-04`, `AUTH-03`, `BASE-05` | `BookingServlet` implements `GET /bookings` (all bookings with class filters) and `PUT /bookings/{id}/cancel`. | Not Started |
 | `ADM-17` | Frontend Administrative Booking Oversight | **Developer 2** | `ADM-16` | Table of class bookings with filters and administrative cancellation control. | Not Started |
 
 ---
@@ -165,13 +171,13 @@ To prevent ambiguity, merge collisions, or implementation deadlock while maintai
 | Task ID | Task Title | Owner | Dependencies | Completion Criteria | Status |
 |---|---|---|---|---|:---:|
 | `MEM-01` | Member Dashboard Layout & Welcome View | **Developer 3** | `AUTH-03`, `AUTH-05` | Member dashboard rendering personalized welcome, current subscription status badge, and upcoming bookings widget. | Not Started |
-| `MEM-02` | Backend Member Profile & Password Change | **Developer 3** | `AUTH-03`, `BASE-01` | `UserServlet` handles `GET /users/me`, `PUT /users/me` (strictly `fullName` and `phone`), and `PUT /users/me/password` (BCrypt verification and update). | Not Started |
+| `MEM-02` | Backend Member Profile & Password Change | **Developer 3** | `AUTH-01`, `AUTH-03`, `BASE-05` | `UserServlet` handles `GET /users/me`, `PUT /users/me` (strictly `fullName` and `phone`), and `PUT /users/me/password` (BCrypt verification and update via `PasswordUtil`). | Not Started |
 | `MEM-03` | Frontend Member Profile & Security View | **Developer 3** | `MEM-02` | Profile form allowing members to update contact info and change passwords with input validation. | Not Started |
-| `MEM-04` | Backend Member Subscription Retrieval | **Developer 3** | `DB-04`, `AUTH-03` | `SubscriptionServlet` handles `GET /subscriptions/my` returning member history and calculating `isCurrentlyValid` dynamically. | Not Started |
+| `MEM-04` | Backend Member Subscription Retrieval | **Developer 3** | `DB-04`, `AUTH-03`, `BASE-05` | `SubscriptionServlet` handles `GET /subscriptions/my` returning member history and calculating `isCurrentlyValid` dynamically. | Not Started |
 | `MEM-05` | Frontend Subscription Status Card | **Developer 3** | `MEM-04` | Member subscription view displaying plan name, validity dates, active/expired badge, and renewal instructions. | Not Started |
 | `MEM-06` | Frontend Member Class Browsing & Booking UI | **Developer 3** | `VIS-07`, `MEM-04` | Class schedule interface highlighting bookable sessions with one-click "Book Class" action. | Not Started |
-| `MEM-07` | Backend Transactional Class Booking Engine | **Developer 3** | `DB-04`, `AUTH-03` | `POST /bookings` executes exact 8-step sequence: row lock on class (`FOR UPDATE`) -> subscription validity -> future check -> duplicate active check -> capacity check -> `INSERT` -> commit. | Not Started |
-| `MEM-08` | Backend Personal Booking Retrieval & Cancel | **Developer 3** | `MEM-07` | `BookingServlet` handles `GET /bookings/my` (including booked/cancelled history) and `PUT /bookings/{id}/cancel` (releasing capacity). | Not Started |
+| `MEM-07` | Backend Transactional Class Booking Engine | **Developer 3** | `DB-04`, `AUTH-03`, `BASE-05` | `BookingService` executes exact 8-step sequence: row lock on class (`FOR UPDATE`) -> subscription validity -> future check -> duplicate active check -> capacity check -> `INSERT` -> commit. | Not Started |
+| `MEM-08` | Backend Personal Booking Retrieval & Cancel | **Developer 3** | `MEM-07`, `AUTH-03`, `BASE-05` | `BookingServlet` handles `GET /bookings/my` (including booked/cancelled history) and `PUT /bookings/{id}/cancel` (releasing capacity). | Not Started |
 | `MEM-09` | Frontend My Bookings History & Cancellation | **Developer 3** | `MEM-08` | View displaying member's upcoming and past bookings with status badges and "Cancel Booking" action. | Not Started |
 
 ---

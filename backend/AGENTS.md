@@ -19,12 +19,16 @@ These guidelines apply to all AI agents and developers working on the Java backe
 ## Architectural Rules
 
 1. **Layered Separation of Concerns:**
-   - `model/`: Plain Java Objects (POJOs) representing database entities.
-   - `dao/`: Data Access Objects executing SQL via `PreparedStatement`. No HTTP or presentation logic here.
-   - `servlet/`: HTTP request dispatchers, JSON serialization/deserialization, calling DAO layer.
-   - `config/`: Database connection management, environment variable loading.
+   - `model/`: Plain Java Objects (POJOs) representing database entities and type-safe enums (`com.fitsphere.model.enums`).
+   - `dto/`: Request and Response DTOs decoupling external API contracts from internal database entities.
+   - `validator/`: Request payload validation ensuring data integrity before service execution.
+   - `exception/`: Typed `AppException` hierarchy mapping directly to HTTP status codes and contract error codes.
+   - `service/`: Domain business logic, transaction boundaries (`connection.setAutoCommit(false)`), and pessimistic row locking (`SELECT ... FOR UPDATE`).
+   - `dao/`: Pure JDBC Data Access Objects executing parameterized SQL via `PreparedStatement`. Accepts connection from caller or connection pool.
+   - `servlet/`: Thin HTTP controllers extending `BaseServlet`, extracting DTOs, delegating to Services, and writing JSON responses.
+   - `config/`: Database connection management, environment variable loading (`IllegalStateException` on missing vars).
    - `filter/`: Cross-cutting HTTP filters for CORS, session validation, and role authorization.
-   - `util/`: Shared helper utilities (e.g., password hashing, JSON response envelopes).
+   - `util/`: Shared helper utilities (`PasswordUtil`, `JsonUtil`, `DateUtil`, `ServletUtil`).
 
 2. **Database & Connection Handling:**
    - Always use `PreparedStatement` with parameterized placeholders (`?`) to prevent SQL injection.
@@ -45,5 +49,5 @@ These guidelines apply to all AI agents and developers working on the Java backe
    - Protect administrative endpoints against unauthorized visitor or member requests.
 
 5. **Shared Code & Team Ownership:**
-   - Shared entities (`User`, `Trainer`, `MembershipPlan`, `Subscription`, `GymClass`, `Booking`) and their base DAOs are shared across roles.
+   - Shared entities (`User`, `Trainer`, `MembershipPlan`, `Subscription`, `GymClass`, `Booking`, `Payment`, `AuditLog`) and their base DAOs are shared across roles.
    - Avoid duplicating entity classes or authentication handlers per role.

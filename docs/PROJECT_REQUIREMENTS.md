@@ -228,12 +228,16 @@ This validation must be enforced by the Java backend, not only the React fronten
 - If a member books the same class again after cancelling, a new booking record is created (`INSERT`), preserving the previous cancellation as booking history.
 - The backend prevents multiple active (`BOOKED`) bookings for the same member and class using transactional concurrency control.
 
-### 4.7 Deletion Policy (Soft Delete)
+### 4.7 Deletion and Cancellation Policy (Soft Delete)
 
 - Deleting a member deactivates the account (`account_status = 'INACTIVE'`).
 - Deleting a trainer deactivates the trainer (`is_active = FALSE`).
 - Deleting a membership plan deactivates the plan (`is_active = FALSE`).
 - Physical SQL `DELETE` is prohibited on records referenced by foreign keys (subscriptions, classes, bookings, payments).
+- **Subscription Cancellation vs. Payment Status:**
+  - Cancelling an active subscription updates `subscriptions.status = 'CANCELLED'`, immediately terminating booking eligibility.
+  - The associated payment record **remains `PAID`**; membership fees are non-refundable upon cancellation.
+  - `payment_status = 'CANCELLED'` is strictly reserved for administrative clerical error corrections (e.g., voiding a mistakenly recorded receipt before daily cash-out). It does not represent an automated refund.
 
 ## 5. Dashboard Requirements
 
@@ -278,6 +282,7 @@ The administrator dashboard should prioritize clarity and simplicity. Complex ch
 - Protected operations must require authentication.
 - Role-based authorization must be enforced by the backend.
 - Members must only access and modify their own private information and bookings.
+- Administrative audit trail: Sensitive administrative operations (member deactivation, trainer/plan deactivations, cancellations) are automatically logged in the immutable `audit_logs` table for institutional governance.
 - Database queries must use prepared statements to eliminate SQL injection risks.
 - Sensitive configuration and database credentials must not be hardcoded or committed to Git.
 
@@ -322,11 +327,12 @@ The administrator dashboard should prioritize clarity and simplicity. Complex ch
 - BCrypt
 
 ### Database
-- MySQL
+- MySQL 8.0.16+ (InnoDB storage engine; 8.0.16+ strictly required for enforced CHECK constraints)
 - MySQL Connector/J
-- InnoDB storage engine
-- Foreign key constraints
-- Transactions where necessary
+- 8 relational tables: `users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`, `audit_logs`
+- Foreign key constraints with ON DELETE RESTRICT ON UPDATE CASCADE (including composite constraint guaranteeing payment-to-subscription ownership)
+- Domain check constraints (valid email syntax, positive capacity, same-day end_time > start_time, non-negative amounts/prices)
+- Pessimistic row locking (`SELECT ... FOR UPDATE`) and ACID transactions
 
 ### Authentication
 - HTTP sessions.

@@ -74,7 +74,7 @@ FitSphere enforces a decoupled client-server architecture using only approved te
 | **Backend Runtime** | **Java 17** | Jakarta EE 10 compatible backend compiled to Java 17 release bytecode |
 | **Servlet Container** | **Apache Tomcat 10.1** | Implements the **Jakarta Servlet 6.0** specification (`jakarta.servlet.*`) |
 | **Data Persistence** | **JDBC** | Raw Java Database Connectivity with `PreparedStatement` and manual transaction boundaries |
-| **Relational Database** | **MySQL 8.0+** | InnoDB storage engine, 7 relational tables, foreign key constraints, `utf8mb4` encoding |
+| **Relational Database** | **MySQL 8.0.16+** | InnoDB storage engine, 8 relational tables, foreign key constraints, domain checks, `utf8mb4` encoding |
 | **Serialization** | **Google Gson 2.10** | High-performance JSON parsing and serialization |
 | **Security / Hashing** | **jBCrypt 0.4** | Strong salted BCrypt password hashing |
 | **Build Tool (Backend)**| **Apache Maven 3.8+** | Packaging backend artifact as `fitsphere.war` |
@@ -94,7 +94,7 @@ gym_management/
 ├── .env.example                  # Template configuration for local environment credentials
 │
 ├── database/                     # Database scripts (Owned exclusively by Developer 3)
-│   ├── schema.sql                # DDL: 7 InnoDB tables, constraints, indexes [Pending Dev 3 implementation]
+│   ├── schema.sql                # DDL: 8 InnoDB tables, constraints, indexes [Pending Dev 3 implementation]
 │   └── seed.sql                  # DML: Default administrator, sample trainers, plans, classes [Pending Dev 3 implementation]
 │
 ├── docs/                         # Formal project documentation
@@ -123,10 +123,14 @@ gym_management/
     └── src/main/
         ├── java/com/fitsphere/
         │   ├── config/           # DatabaseConnection pool and app constants [Pending Phase 2]
-        │   ├── dao/              # JDBC Data Access Objects with transactions [Pending Phase 2+]
-        │   ├── filter/           # AuthFilter for session and role enforcement [Pending Phase 3]
-        │   ├── model/            # Plain Java model entities [Pending Phase 2]
-        │   ├── servlet/          # Jakarta Servlets handling API routes [Pending Phases 3–6]
+        │   ├── model/            # Plain Java model entities and enums [Pending Phase 2]
+        │   ├── dto/              # Request and Response Data Transfer Objects [Pending Phase 2+]
+        │   ├── dao/              # JDBC Data Access Objects with parameterized SQL [Pending Phase 2+]
+        │   ├── service/          # Domain services with transaction and lock boundaries [Pending Phase 2+]
+        │   ├── validator/        # Request payload validators [Pending Phase 2+]
+        │   ├── exception/        # Typed AppException hierarchy [Pending Phase 2]
+        │   ├── servlet/          # Jakarta Servlets extending BaseServlet [Pending Phases 3–6]
+        │   ├── filter/           # AuthFilter and CorsFilter [Pending Phase 3]
         │   └── util/             # BaseServlet, JsonUtil, PasswordUtil helpers [Pending Phase 2]
         └── webapp/
             └── WEB-INF/
@@ -146,7 +150,7 @@ Before running FitSphere, ensure the following tools are installed on your works
 | **Java JDK** | 17 (or compatible JDK 17–25) | `java -version` |
 | **Apache Maven** | 3.8.x or 3.9.x | `mvn -v` |
 | **Apache Tomcat** | 10.1.x (Jakarta EE 10) | Available in local application server path |
-| **MySQL Server** | 8.0.x or higher | `mysql --version` |
+| **MySQL Server** | 8.0.16 or higher | `mysql --version` |
 | **Git** | 2.30.x or higher | `git --version` |
 
 ---
@@ -221,7 +225,7 @@ FitSphere reads database connection details from environment variables or a loca
 3. **Execute DDL & Seed Scripts:**
    *(Note: The SQL file content in `database/schema.sql` and `database/seed.sql` is currently marked as **Pending Implementation** by Developer 3 under Phase 2 of the roadmap. Once authored by Developer 3, execute them as follows):*
    ```bash
-   # Import 7 tables, constraints, and indexes
+   # Import 8 tables, constraints, and indexes
    mysql -u your_mysql_username -p fitsphere < database/schema.sql
 
    # Import seed data (default admin, sample trainers, plans, classes)
@@ -327,7 +331,7 @@ For complete system specifications, refer to the documents in [`docs/`](file:///
 - [`PROJECT_CONTEXT.md`](file:///c:/Users/ASUS/Desktop/gym_management/PROJECT_CONTEXT.md): Project overview, agreed architectural decisions, and current repository status.
 - [`AGENTS.md`](file:///c:/Users/ASUS/Desktop/gym_management/AGENTS.md): Strict technical boundaries and guidelines for developers and AI agents.
 - [`docs/PROJECT_REQUIREMENTS.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/PROJECT_REQUIREMENTS.md): Comprehensive functional requirements, role use cases, and business rules.
-- [`docs/DATABASE_SCHEMA.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DATABASE_SCHEMA.md): Complete data dictionary for all 7 tables, constraints, indexes, and locking behavior.
+- [`docs/DATABASE_SCHEMA.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DATABASE_SCHEMA.md): Complete data dictionary for all 8 tables, constraints, indexes, and locking behavior.
 - [`docs/ARCHITECTURE.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/ARCHITECTURE.md): System architecture, transaction boundaries, session auth model, and state management.
 - [`docs/API_CONTRACT.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/API_CONTRACT.md): Exhaustive HTTP endpoints, request/response JSON schemas, and error codes.
 - [`docs/DEVELOPMENT_WORKFLOW.md`](file:///c:/Users/ASUS/Desktop/gym_management/docs/DEVELOPMENT_WORKFLOW.md): Step-by-step Git workflow, PR rules, review checklist, and conflict resolution.
