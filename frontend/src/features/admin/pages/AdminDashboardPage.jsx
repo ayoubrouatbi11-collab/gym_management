@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import StatCard from '../../../components/common/StatCard';
 import RecentMembersCard from '../components/RecentMembersCard';
 import UpcomingClassesCard from '../components/UpcomingClassesCard';
@@ -39,10 +40,15 @@ export function AdminDashboardPage() {
   return (
     <div>
       <div className="dashboard-header">
-        <h2 className="dashboard-header__title">Overview</h2>
-        <p className="dashboard-header__subtitle">
-          Key gym metrics, recent members, and upcoming classes
-        </p>
+        <div>
+          <h2 className="dashboard-header__title">Overview</h2>
+          <p className="dashboard-header__subtitle">
+            Key gym metrics, recent members, and upcoming classes
+          </p>
+        </div>
+        <Link to="/admin/members/new" className="dashboard-header__cta">
+          + Add Member
+        </Link>
       </div>
 
       {/* Stat cards */}

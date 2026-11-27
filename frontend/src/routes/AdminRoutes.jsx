@@ -2,6 +2,7 @@ import React from 'react';
 import { Route, Routes, Navigate } from 'react-router-dom';
 import AdminLayout from '../components/admin/AdminLayout';
 import AdminDashboardPage from '../features/admin/pages/AdminDashboardPage';
+import AddMemberPage from '../features/admin/pages/AddMemberPage';
 
 /**
  * AdminRoutes — Nested route tree for all /admin/* pages.
@@ -16,6 +17,9 @@ export function AdminRoutes() {
       <Route element={<AdminLayout />}>
         {/* Dashboard — index route */}
         <Route index element={<AdminDashboardPage />} />
+
+        {/* Member creation (ADM-03) */}
+        <Route path="members/new"   element={<AddMemberPage />} />
 
         {/* Placeholder routes for future admin pages */}
         <Route path="members"       element={<PlaceholderPage title="Members Management" />} />
