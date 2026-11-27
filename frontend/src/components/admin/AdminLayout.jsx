@@ -18,6 +18,10 @@ const NAV_ITEMS = [
   { to: '/admin/bookings', icon: '🎫', label: 'Bookings',         end: false },
 ];
 
+const SUB_ROUTE_TITLES = {
+  '/admin/members/new': 'Add Member',
+};
+
 /**
  * AdminLayout — Shell layout for all /admin/* routes.
  * Provides a fixed sidebar with navigation and a top header bar.
@@ -29,12 +33,13 @@ export function AdminLayout() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
   const activeNav = NAV_ITEMS.find((item) =>
     item.end
-      ? location.pathname === item.to || location.pathname === `${item.to}/`
-      : location.pathname === item.to || location.pathname.startsWith(`${item.to}/`)
+      ? normalizedPath === item.to
+      : normalizedPath === item.to || normalizedPath.startsWith(`${item.to}/`)
   );
-  const pageTitle = activeNav ? activeNav.label : 'Administration';
+  const pageTitle = SUB_ROUTE_TITLES[normalizedPath] || (activeNav ? activeNav.label : 'Administration');
 
   useEffect(() => {
     if (!sidebarOpen) return;
