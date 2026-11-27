@@ -277,7 +277,7 @@ The administrator dashboard should prioritize clarity and simplicity. Complex ch
 
 ### 6.1 Security
 
-- Passwords must be securely hashed using BCrypt. Minimum password length is 6 characters without whitespace.
+- Passwords must be securely hashed using BCrypt (work factor 12). Minimum password length is 12 characters and maximum 72 UTF-8 bytes, allowing spaces and all character types without forced composition rules.
 - Authentication must be implemented using HTTP sessions.
 - Protected operations must require authentication.
 - Role-based authorization must be enforced by the backend.

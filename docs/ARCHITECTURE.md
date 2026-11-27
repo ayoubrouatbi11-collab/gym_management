@@ -324,8 +324,8 @@ POJOs representing persistent domain entities and type-safe Java enums:
   - `BookingStatus` (`BOOKED`, `CANCELLED`)
   - `PaymentStatus` (`PAID`, `CANCELLED`)
   - `PaymentMethod` (`CASH`, `CARD`)
-  - `AuditAction` (`MEMBER_CREATED`, `MEMBER_DEACTIVATED`, `PLAN_DEACTIVATED`, `TRAINER_DEACTIVATED`, `CLASS_CANCELLED`, `SUBSCRIPTION_CANCELLED`, `BOOKING_CANCELLED`)
-  - `EntityType` (`USER`, `PLAN`, `TRAINER`, `CLASS`, `SUBSCRIPTION`, `BOOKING`)
+  - `AuditAction` (`MEMBER_CREATED`, `MEMBER_DEACTIVATED`, `MEMBER_ACTIVATED`, `TRAINER_DEACTIVATED`, `TRAINER_ACTIVATED`, `PLAN_DEACTIVATED`, `PLAN_ACTIVATED`, `CLASS_CANCELLED`, `SUBSCRIPTION_RENEWED`, `SUBSCRIPTION_CANCELLED`, `BOOKING_CANCELLED`, `PAYMENT_CANCELLED`)
+  - `EntityType` (`USER`, `PLAN`, `TRAINER`, `CLASS`, `SUBSCRIPTION`, `BOOKING`, `PAYMENT`)
 
 #### 3. DTO Layer (`com.fitsphere.dto`)
 Data Transfer Objects that cleanly isolate internal database representations from external HTTP JSON payloads.
@@ -333,28 +333,29 @@ Data Transfer Objects that cleanly isolate internal database representations fro
 - **Response DTOs:** Ensure sensitive fields (e.g., BCrypt password hashes) are never exposed. Produce clean response structures matching `docs/API_CONTRACT.md` exactly.
 
 #### 4. Validator Layer (`com.fitsphere.validator`)
-Dedicated validator classes that verify structural integrity, email formats, positive numeric ranges, non-blank strings, and date relationships before domain execution:
-- `UserValidator`: Validates name lengths, email regex, phone formatting, and password constraints (minimum 6 characters, no whitespace).
+Dedicated validator classes that verify structural integrity, email formats, positive numeric ranges, non-blank strings, optional blank-to-null normalization, and date relationships before domain execution:
+- `UserValidator`: Validates name lengths, email regex, phone formatting, and password constraints (minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all character types allowed, no forced composition rules).
 - `SubscriptionValidator`: Ensures `startDate` and `durationMonths` are positive and valid.
 - `GymClassValidator`: Ensures `capacity > 0`, `end_time > start_time`, and valid date/time logic.
 - `BookingValidator`: Checks booking input parameters.
-- When validation fails, validators throw typed `ValidationException` with field-specific errors, mapped to `400 Bad Request` and `INVALID_INPUT`.
+- When validation fails, validators throw typed `ValidationException` with field-specific errors, mapped to `400 Bad Request` and `VALIDATION_ERROR`.
 
 #### 5. Exception Layer (`com.fitsphere.exception`)
-Hierarchical typed exceptions mapping directly to HTTP status codes and contract error codes:
+Hierarchical typed exceptions mapping directly to HTTP status codes and contract error codes in `docs/API_CONTRACT.md`:
 - `AppException`: Base unchecked application exception containing `errorCode` and HTTP status.
-- `ValidationException` (HTTP 400, `INVALID_INPUT` / `VALIDATION_ERROR`)
-- `AuthenticationException` (HTTP 401, `UNAUTHORIZED` / `INVALID_CREDENTIALS`)
-- `AuthorizationException` (HTTP 403, `FORBIDDEN`)
-- `ResourceNotFoundException` (HTTP 404, `USER_NOT_FOUND`, `CLASS_NOT_FOUND`, etc.)
-- `ConflictException` (HTTP 409, `DUPLICATE_EMAIL`, `CLASS_FULL`, `DUPLICATE_BOOKING`)
-- `DatabaseException` (HTTP 500, `DATABASE_ERROR`)
+- `ValidationException` (HTTP 400, `VALIDATION_ERROR`, `INVALID_CURRENT_PASSWORD`, `CLASS_NOT_BOOKABLE`, `BOOKING_ALREADY_CANCELLED`)
+- `AuthenticationException` (HTTP 401, `AUTHENTICATION_REQUIRED`, `INVALID_CREDENTIALS`)
+- `AuthorizationException` (HTTP 403, `ACCESS_DENIED`, `CSRF_TOKEN_INVALID`, `SUBSCRIPTION_REQUIRED`)
+- `ResourceNotFoundException` (HTTP 404, `RESOURCE_NOT_FOUND`)
+- `ConflictException` (HTTP 409, `EMAIL_ALREADY_EXISTS`, `RECEIPT_ALREADY_EXISTS`, `CLASS_FULL`, `DUPLICATE_BOOKING`, `CANNOT_DELETE_HISTORICAL_RECORD`)
+- `RateLimitException` (HTTP 429, `RATE_LIMIT_EXCEEDED`)
+- `DatabaseException` (HTTP 500, `INTERNAL_SERVER_ERROR`)
 
 #### 6. Service Layer (`com.fitsphere.service`)
 Core domain orchestrator where business logic, transaction boundaries, and pessimistic locks are managed:
 - **`UserService`:** Coordinates the atomic 3-in-1 member registration transaction (`User` + `Subscription` + `Payment` + `AuditLog`). Manages profile updates and soft delete (`account_status = 'INACTIVE'`).
 - **`SubscriptionService`:** Computes dynamic subscription validity (`status = 'ACTIVE'` and `CURRENT_DATE BETWEEN start_date AND end_date`). Coordinates atomic subscription renewal transactions (`Subscription` + `Payment` + `AuditLog`).
-- **`BookingService`:** Executes the 8-step booking engine with transaction boundaries and pessimistic class row locking (`SELECT ... FOR UPDATE`), active subscription checks, capacity deduction, cancellation, and rebooking.
+- **`BookingService`:** Executes the 8-step booking engine with transaction boundaries and pessimistic class row locking (`SELECT ... FOR UPDATE`), active subscription checks, cancellation (using parent-first lock ordering `gym_classes` then `bookings` + bounded retry for MySQL deadlock errors `1213` / `SQLState 40001`), and rebooking.
 - **`GymClassService`:** Evaluates dynamic `isBookable` status, manages class creation, updates, and cancellations.
 - **`TrainerService` & `PlanService`:** Handles CRUD and soft-deletion (`is_active = FALSE`).
 - **`PaymentService`:** Audits and queries physical payment records.
@@ -377,12 +378,13 @@ Thin HTTP controllers extending `BaseServlet`:
 - Domain servlets (`AuthServlet`, `UserServlet`, `TrainerServlet`, `PlanServlet`, `SubscriptionServlet`, `PaymentServlet`, `GymClassServlet`, `BookingServlet`) handle URL path routing, DTO extraction, delegate to the corresponding Service, and return responses.
 
 #### 9. Filter Layer (`com.fitsphere.filter`)
-- `AuthFilter`: Enforces server-side session authentication and role validation (`PUBLIC`, `MEMBER`, `ADMIN`), protecting secure endpoints.
-- `CorsFilter`: Handles CORS headers for `http://localhost:3000` with `Access-Control-Allow-Credentials: true` and responds to `OPTIONS` preflight requests immediately with `200 OK`.
+Filter order is explicitly declared in `WEB-INF/web.xml` so `CorsFilter` **always executes before `AuthFilter`** (ensuring `OPTIONS` preflight and `Access-Control-Allow-Origin` headers are present even on `401`/`403` error responses):
+- `CorsFilter`: Handles CORS headers for `http://localhost:3000` (`Allowed Headers: Content-Type, Accept, X-CSRF-TOKEN`, `Access-Control-Allow-Credentials: true`) and responds to `OPTIONS` preflight requests immediately with `200 OK`.
+- `AuthFilter`: Enforces server-side session authentication, active account verification (`account_status = 'ACTIVE'`), role validation (`PUBLIC`, `MEMBER`, `ADMIN`), and Synchronizer CSRF token (`X-CSRF-TOKEN`) verification on authenticated mutating requests (`POST`, `PUT`, `DELETE`, including `POST /auth/logout`). `POST /auth/login` is protected by strict `Origin` allowlist validation.
 
 #### 10. Util Layer (`com.fitsphere.util`)
-- `PasswordUtil`: BCrypt hashing and verification.
-- `JsonUtil`: Gson serialization configured with ISO date adapters.
+- `PasswordUtil`: BCrypt hashing (work factor 12) and verification.
+- `JsonUtil`: Gson serialization configured with explicit `TypeAdapter`s for `LocalDate`, `LocalTime`, and `LocalDateTime` (preventing Java 17+/25 module reflection `InaccessibleObjectException`).
 - `DateUtil`: Date arithmetic (e.g. `startDate.plusMonths(duration).minusDays(1)`).
 - `ServletUtil`: HTTP request parameter extraction and path parsing.
 
@@ -418,14 +420,14 @@ sequenceDiagram
 
     M->>F: Click Book Class
     F->>B: POST /api/bookings { classId }
-    B->>B: Begin Transaction
-    B->>D: 1. Lock Class Row (SELECT ... FOR UPDATE)
-    B->>D: 2. Check active subscription (status=ACTIVE & valid dates)
-    B->>D: 3. Check class bookability (SCHEDULED & future date/time)
-    B->>D: 4. Check no existing active booking by this member
-    B->>D: 5. Check active bookings count < capacity
-    B->>D: 6. INSERT new booking record (status=BOOKED)
-    B->>D: 7. COMMIT transaction
+    B->>B: 1. Begin Transaction (setAutoCommit(false))
+    B->>D: 2. Lock Class Row First (SELECT ... FOR UPDATE)
+    B->>D: 3. Check active subscription (status=ACTIVE & valid dates)
+    B->>D: 4. Check class bookability (SCHEDULED & future date/time)
+    B->>D: 5. Check no existing active booking by this member
+    B->>D: 6. Check active bookings count < capacity
+    B->>D: 7. INSERT new booking record (status=BOOKED)
+    B->>D: 8. COMMIT transaction
     B-->>F: Return 201 Created JSON
     F-->>M: Confirm booking & update schedule
 ```
@@ -441,13 +443,15 @@ Locking the class row **first** serializes concurrent requests for that class, p
 
 ## 6. Authentication and Authorization Architecture
 
-- **Session-Based:** Handled via Jakarta `HttpSession`.
+- **Session-Based:** Handled via Jakarta `HttpSession` with `request.changeSessionId()` executed upon login to prevent session fixation, and `session.invalidate()` on logout.
+- **Session Cookies:** Configured with `HttpOnly=true` in `WEB-INF/web.xml`, `SameSite=Lax` via Tomcat's `CookieProcessor` in `META-INF/context.xml`, and environment-specific `Secure` (`false` for local HTTP, `true` for production HTTPS).
+- **CSRF Protection:** Synchronizer Token Pattern using `SecureRandom` stored in `HttpSession`, returned in `POST /auth/login` and `GET /auth/me` (reusing existing token), and validated via `X-CSRF-TOKEN` header on authenticated mutating requests. `POST /auth/login` is protected via strict `Origin` allowlist checks and rate limiting.
 - **Session Identity (`/auth/me` vs `/users/me`):**
-  - `GET /api/auth/me` is universally accessible to both `MEMBER` and `ADMIN`. It is used by both Member and Administrator dashboards upon page load/refresh to retrieve authenticated user details (`id`, `fullName`, `email`, `role`, `accountStatus`).
+  - `GET /api/auth/me` is universally accessible to both `MEMBER` and `ADMIN`. It is used by both Member and Administrator dashboards upon page load/refresh to retrieve authenticated user details (`id`, `fullName`, `email`, `role`, `accountStatus`) and the existing session `csrfToken`.
   - `GET /api/users/me` is dedicated exclusively to Member profile self-service. Administrator accounts do not have member profiles and manage their session identity via `/auth/me`.
 - **CORS Credentials:** Client requests send session cookies via `credentials: "include"`.
-- **Password Security:** Hashes stored using BCrypt. Mandatory password change on first login is not required; password changes occur via self-service profile endpoint (`PUT /api/users/me/password`).
-- **Backend Authorization:** Role check (`ADMIN`, `MEMBER`) validated on the server for all protected endpoints.
+- **Password Security:** Minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all character types allowed, no forced composition rules, hashed with BCrypt work factor 12. Mandatory password change on first login is not required; password changes occur via self-service profile endpoint (`PUT /api/users/me/password`).
+- **Backend Authorization:** Role check (`ADMIN`, `MEMBER`) and resource ownership validated on the server for all protected endpoints.
 
 ## 7. Related Documentation
 

@@ -55,7 +55,7 @@ FitSphere bridges the gap between public visitors, registered gym members, and a
 - **Member Dashboard:** Personal hub displaying active subscription validity, days remaining, and upcoming booked sessions.
 - **Profile & Password Management:** Update personal contact details and optionally change password (mandatory first-login password change is not required).
 - **Class Booking Engine:** Browse upcoming classes and reserve seats with atomic capacity deduction.
-- **Booking History & Cancellation:** Review past and upcoming bookings, with the ability to cancel bookings prior to class start time (updating status to `CANCELLED` and restoring available class capacity).
+- **Booking History & Cancellation:** Review past and upcoming bookings, with the ability to cancel active (`BOOKED`) bookings (updating status to `CANCELLED` and restoring available class capacity).
 - **Subscription Ledger:** Read-only view of current and historical subscriptions and their verified payment amounts.
 
 ---
@@ -129,9 +129,9 @@ gym_management/
         │   ├── service/          # Domain services with transaction and lock boundaries [Pending Phase 2+]
         │   ├── validator/        # Request payload validators [Pending Phase 2+]
         │   ├── exception/        # Typed AppException hierarchy [Pending Phase 2]
-        │   ├── servlet/          # Jakarta Servlets extending BaseServlet [Pending Phases 3–6]
-        │   ├── filter/           # AuthFilter and CorsFilter [Pending Phase 3]
-        │   └── util/             # BaseServlet, JsonUtil, PasswordUtil helpers [Pending Phase 2]
+        │   ├── servlet/          # BaseServlet and Jakarta Servlets [Pending Phases 2–6]
+        │   ├── filter/           # CorsFilter and AuthFilter (mapped in web.xml) [Pending Phase 3]
+        │   └── util/             # JsonUtil, PasswordUtil, DateUtil, ServletUtil helpers [Pending Phase 2]
         └── webapp/
             └── WEB-INF/
                 └── web.xml       # Servlet 6.0 deployment descriptor and cookie session config
@@ -180,7 +180,7 @@ Before running FitSphere, ensure the following tools are installed on your works
 
 ## 7. Environment Configuration
 
-FitSphere reads database connection details from environment variables or a local configuration file. 
+FitSphere reads database connection details from environment variables (`System.getenv(...)`). Note that Java/Tomcat does not automatically parse a root `.env` file, so export these variables in your OS/IDE or configure Tomcat's `$CATALINA_HOME/bin/setenv.bat` (Windows) / `setenv.sh` (Linux/macOS): 
 
 1. **Create the environment file:**
    Copy the provided `.env.example` in the project root:
@@ -292,8 +292,8 @@ FitSphere divides responsibilities according to a **Role-Based Full-Stack Owners
 |---|---|---|---|
 | **Developer 1** | **Visitor / Public** | Public homepage, facilities showcase, trainer catalog, plan catalog, public schedule, login UI. | Public read endpoints (`/trainers`, `/plans`, `/classes`), public data filtering. |
 | **Developer 2** | **Administrator** | Admin dashboard, unified member creation form, member/trainer/plan CRUD, subscription renewal, payment audit viewer, class management. | Admin endpoints (`/users`, `/trainers`, `/plans`, `/subscriptions`, `/payments`, `/classes`), atomic member creation transaction. |
-| **Developer 3** | **Member & Database** | Member dashboard, profile editor, password management, class booking grid, booking history & cancellation. | **Database Owner:** `schema.sql`, `seed.sql`, constraints, indexes, connection pool.<br>**Member Backend:** Member endpoints (`/users/profile`, `/users/password`, `/bookings`, `/classes`), class row-locking transaction. |
-| **Shared** | **Core Infrastructure** | Shared layout components, `AuthContext`, base API client (`api.js`), route guards. | Database connection pool (`DatabaseConnection`), base models, `BaseServlet`, session `AuthFilter`, `AuthServlet`. |
+| **Developer 3** | **Member & Database** | Member dashboard, profile editor, password management, class booking grid, booking history & cancellation. | **Database Owner:** `schema.sql`, `seed.sql`, constraints, indexes, DB config.<br>**Member Backend:** Member endpoints (`/users/me`, `/users/me/password`, `/subscriptions/my`, `/bookings`, `/classes`), class row-locking transaction. |
+| **Shared** | **Core Infrastructure** | Shared layout components, `AuthContext`, base API client (`api.js`), route guards. | Database connection manager (`DatabaseConnection`), base models, `BaseServlet`, `CorsFilter`, `AuthFilter`, `AuthServlet`. |
 
 ---
 

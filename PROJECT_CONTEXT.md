@@ -164,7 +164,7 @@ Shared responsibilities include:
 - Server-side session authentication (`HttpSession`).
 
 ### Database
-- 7 MySQL tables: `users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`.
+- 8 MySQL tables: `users`, `trainers`, `membership_plans`, `subscriptions`, `gym_classes`, `bookings`, `payments`, `audit_logs`.
 - Foreign keys with `ON DELETE RESTRICT` to protect historical data integrity.
 
 ## 8. Technical Restrictions

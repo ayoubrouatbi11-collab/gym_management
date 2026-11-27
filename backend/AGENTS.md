@@ -23,11 +23,11 @@ These guidelines apply to all AI agents and developers working on the Java backe
    - `dto/`: Request and Response DTOs decoupling external API contracts from internal database entities.
    - `validator/`: Request payload validation ensuring data integrity before service execution.
    - `exception/`: Typed `AppException` hierarchy mapping directly to HTTP status codes and contract error codes.
-   - `service/`: Domain business logic, transaction boundaries (`connection.setAutoCommit(false)`), and pessimistic row locking (`SELECT ... FOR UPDATE`).
-   - `dao/`: Pure JDBC Data Access Objects executing parameterized SQL via `PreparedStatement`. Accepts connection from caller or connection pool.
+   - `service/`: Domain business logic, transaction boundaries (`connection.setAutoCommit(false)`), parent-first pessimistic row locking (`SELECT ... FOR UPDATE`), and bounded deadlock retry (`Error 1213` / `SQLState 40001`).
+   - `dao/`: Pure JDBC Data Access Objects executing parameterized SQL via `PreparedStatement`. Accepts transactional `Connection` from Service or acquires thread-safe `Connection` via `DatabaseConnection` (Tomcat JNDI `DataSource` or standalone `DriverManager`).
    - `servlet/`: Thin HTTP controllers extending `BaseServlet`, extracting DTOs, delegating to Services, and writing JSON responses.
    - `config/`: Database connection management, environment variable loading (`IllegalStateException` on missing vars).
-   - `filter/`: Cross-cutting HTTP filters for CORS, session validation, and role authorization.
+   - `filter/`: Cross-cutting HTTP filters (`CorsFilter` mapped **before** `AuthFilter` in `WEB-INF/web.xml`) for CORS, session validation, role authorization, and `X-CSRF-TOKEN` enforcement.
    - `util/`: Shared helper utilities (`PasswordUtil`, `JsonUtil`, `DateUtil`, `ServletUtil`).
 
 2. **Database & Connection Handling:**
@@ -44,7 +44,7 @@ These guidelines apply to all AI agents and developers working on the Java backe
    - Set `Content-Type: application/json; charset=UTF-8` on all JSON responses.
 
 4. **Security & Authorization:**
-   - Passwords must be hashed with BCrypt before persistence. Never store or log raw passwords.
+   - Passwords must satisfy the approved passphrase policy (minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all characters allowed, no forced composition rules) and be hashed with BCrypt work factor 12 before persistence. Never store or log raw passwords.
    - Never trust frontend role indicators. Always validate user identity and role from the server-side `HttpSession`.
    - Protect administrative endpoints against unauthorized visitor or member requests.
 

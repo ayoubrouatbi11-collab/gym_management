@@ -313,6 +313,7 @@ Stores immutable audit trail records for sensitive administrative operations, se
   - `TRAINER_DEACTIVATED` / `TRAINER_ACTIVATED`: Trainer availability toggles.
   - `PLAN_DEACTIVATED` / `PLAN_ACTIVATED`: Membership plan availability toggles.
   - `CLASS_CANCELLED`: Administrative cancellation of a scheduled class.
+  - `SUBSCRIPTION_RENEWED`: Administrative subscription renewal with payment.
   - `SUBSCRIPTION_CANCELLED`: Administrative cancellation of a member subscription.
   - `BOOKING_CANCELLED`: Administrative cancellation of a member booking.
   - `PAYMENT_CANCELLED`: Administrative clerical voiding of a payment entry.
@@ -416,7 +417,7 @@ Multi-step operations must be executed inside database transactions (`connection
 
 ### 7.1 Creating a New Member (3-in-1 Workflow)
 The administrator workflow creates three related records atomically in a single transaction:
-1. Validate that all required member, plan, and payment fields are provided (initial subscription and payment are **mandatory**). Verify password meets policy (minimum 6 characters, no spaces).
+1. Validate that all required member, plan, and payment fields are provided (initial subscription and payment are **mandatory**). Verify password policy (minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all character types allowed, no forced composition rules).
 2. `INSERT INTO users (...)` (create member account)
 3. Compute `end_date` using inclusive calendar range: `startDate.plusMonths(durationMonths).minusDays(1)`.
 4. `INSERT INTO subscriptions (...)` (create initial subscription)

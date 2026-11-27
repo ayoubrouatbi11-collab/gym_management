@@ -37,8 +37,8 @@ The team follows a **Role-Based Full-Stack Ownership** model. Each developer is 
 | **Role Features** | Implements React pages, UI components, and API callers for assigned role. | None (owned exclusively by the assigned developer). |
 | **Backend Servlets** | Implements role-specific servlet endpoints and controller logic. | Adherence to shared response conventions and error structures. |
 | **Database Design & Setup** | **Developer 3:** Exclusive owner of MySQL database creation, `database/schema.sql`, `database/seed.sql`, constraints, indexes, and connection setup (`DB-01` to `DB-04`). | Developers 1 and 2 coordinate any query/schema needs with Developer 3; no independent schema modifications. |
-| **Authentication & Security** | **Developer 1 (Lead):** Implements `PasswordUtil` & `AuthServlet`.<br>**Developer 2 (Lead):** Implements `AuthFilter` & `CorsFilter`. | **Shared:** Session attributes (`userId`, `role`), cookies, response envelopes, and mutual review. |
-| **Shared Models & Utilities**| **Developer 3 (Lead):** Implements base POJO models (`BASE-01`), enums, `JsonUtil` & `DateUtil` (`BASE-02`), and DTOs (`BASE-03`).<br>**Developer 2 (Lead):** Implements validators & exceptions (`BASE-04`), and `BaseServlet` (`BASE-05`). | **Shared:** Modifying a shared model or base controller requires peer review and approval before merging. |
+| **Authentication & Security** | **Developer 1 (Lead):** Implements `PasswordUtil` & `AuthServlet` (login rate limiting, `changeSessionId()`, `SecureRandom` CSRF tokens).<br>**Developer 2 (Lead):** Implements `AuthFilter` (role checks & `X-CSRF-TOKEN` verification) & `CorsFilter`. | **Shared:** Session attributes (`userId`, `role`, `csrfToken`), cookies, response envelopes, and mutual review. |
+| **Shared Models, DTOs & DAOs**| **Developer 3 (Lead):** Implements base POJO models (`BASE-01`), enums, `JsonUtil` & `DateUtil` (`BASE-02`), DTOs (`BASE-03`), and `DAO-04`.<br>**Developer 2 (Lead):** Implements validators & exceptions (`BASE-04`), `BaseServlet` (`BASE-05`), `DAO-01`, and `DAO-03`.<br>**Developer 1 (Lead):** Implements `DAO-02`. | **Shared:** Modifying a shared model, DAO, or base controller requires peer review and approval before merging. |
 | **API Contract** | Follows the endpoints specified for their assigned role. | **Shared:** `docs/API_CONTRACT.md` must be agreed upon before any endpoint changes. |
 | **Common UI Elements**| Uses components from `components/common/`. | **Shared:** Enhancements to common buttons, inputs, headers, or modal dialogs. |
 
@@ -248,6 +248,7 @@ All HTTP communication between React (running on `http://localhost:3000`) and To
   ```text
   Access-Control-Allow-Origin: http://localhost:3000
   Access-Control-Allow-Credentials: true
+  Access-Control-Allow-Headers: Content-Type, Accept, X-CSRF-TOKEN
   ```
 
 ### 7.3 Database Coordination

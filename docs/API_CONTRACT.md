@@ -56,25 +56,28 @@ All endpoints defined in this document are relative to this base URL (e.g., `/au
     | `class_id` | `classId` |
     | `booking_date` | `bookingDate` |
     | `subscription_id` | `subscriptionId` |
+    | `recorded_by_admin_id` | `recordedByAdminId` |
+    | `payment_method` | `paymentMethod` |
     | `payment_date` | `paymentDate` |
+    | `receipt_number` | `receiptNumber` |
     | `payment_status` | `paymentStatus` |
+  - *Blank Optional Field Normalization:* Optional string fields (`phone`, trainer `email`, `receiptNumber`) must be trimmed and normalized from empty string `""` to `null` before database persistence to prevent `UNIQUE` constraint collisions.
 - **Data Formats:**
   - Dates: `YYYY-MM-DD` (e.g. `"2026-11-26"`).
   - Times: `HH:mm:ss` (e.g. `"10:00:00"`).
   - Timestamps: ISO 8601 string (e.g. `"2026-11-26T10:30:00"`).
   - Currency / Prices: Decimal numbers with two fractional digits (e.g. `80.00`).
 
-### 2.3 Authentication & Session Handling
+### 2.3 Authentication, Session & CSRF Handling
 
-FitSphere uses **HTTP session-based authentication** (`jakarta.servlet.http.HttpSession`):
-- A successful login creates an authenticated session on the backend.
-- The session identifier (`JSESSIONID`) is automatically maintained by the browser via an `HttpOnly` cookie.
-- The React frontend must include session credentials on all requests by configuring the Fetch API with:
-  ```javascript
-  credentials: "include"
-  ```
-- Logout invalidates the server-side session.
-- The backend verifies authentication and user role for every protected endpoint.
+FitSphere uses **HTTP session-based authentication** (`jakarta.servlet.http.HttpSession`) paired with the **Synchronizer Token Pattern** for CSRF defense:
+- A successful login creates an authenticated session and rotates the session identifier (`request.changeSessionId()`) to prevent session fixation.
+- The session identifier (`JSESSIONID`) is maintained by the browser via a cookie configured with `HttpOnly=true` (`WEB-INF/web.xml`), `SameSite=Lax` (Tomcat `CookieProcessor` in `META-INF/context.xml`), and environment-specific `Secure` (`false` for local HTTP development, `true` for production HTTPS).
+- Upon establishing the authenticated session, the backend generates a CSRF token via `SecureRandom`, stores it in `session.setAttribute("csrfToken", token)`, and returns it in `POST /auth/login` and `GET /auth/me` (returning the existing session token on `/auth/me` without regenerating).
+- The React frontend must store `csrfToken` in memory, include `credentials: "include"` on all Fetch requests, and attach the `X-CSRF-TOKEN` request header on all authenticated mutating requests (`POST`, `PUT`, `DELETE`, including `POST /auth/logout`).
+- Public `POST /auth/login` is exempt from the session CSRF token check and is protected by strict `Origin` allowlist validation and CORS restrictions.
+- Logout invalidates the server-side session (`session.invalidate()`).
+- The backend verifies authentication, active account status (`account_status = 'ACTIVE'`), and user role for every protected endpoint (if an authenticated user's account is deactivated mid-session, `AuthFilter` invalidates the session and returns `401 AUTHENTICATION_REQUIRED`).
 - **No JWT tokens** are used or required.
 
 ### 2.4 HTTP Status Codes
@@ -86,17 +89,18 @@ FitSphere uses **HTTP session-based authentication** (`jakarta.servlet.http.Http
 | **204 No Content** | Success with empty body | Successful logout or action with no return payload. |
 | **400 Bad Request** | Validation error | Malformed JSON, missing required fields, or invalid formats. |
 | **401 Unauthorized** | Unauthenticated | User is not logged in or session has expired. |
-| **403 Forbidden** | Authorization failure | User does not have the required role, or member lacks active subscription. |
+| **403 Forbidden** | Authorization failure | User lacks required role, lacks active subscription, or failed CSRF validation. |
 | **404 Not Found** | Resource missing | Requested ID does not exist. |
 | **409 Conflict** | Business conflict | Duplicate email, duplicate active booking, full class, or foreign key block. |
+| **429 Too Many Requests** | Rate limit exceeded | Excessive failed login attempts from client IP. |
 | **500 Internal Error** | Server failure | Uncaught exception or database connection failure. |
 
 ### 2.5 Cross-Origin Resource Sharing (CORS) Configuration
 
-The Java Servlet backend enforces CORS policies via `CorsFilter` to permit communication with the React frontend running on `http://localhost:3000`:
+The Java Servlet backend enforces CORS policies via `CorsFilter` (mapped **before** `AuthFilter` in `web.xml`) to permit communication with the React frontend running on `http://localhost:3000`:
 - **Allowed Origin:** `http://localhost:3000` (Wildcard `*` is strictly disallowed when credentials are included).
 - **Allowed Methods:** `GET, POST, PUT, DELETE, OPTIONS`.
-- **Allowed Headers:** `Content-Type, Accept`.
+- **Allowed Headers:** `Content-Type, Accept, X-CSRF-TOKEN`.
 - **Allow Credentials:** `Access-Control-Allow-Credentials: true` (mandatory for `JSESSIONID` session cookie transport).
 - **Preflight Handling:** Any HTTP `OPTIONS` preflight request is intercepted by `CorsFilter` and immediately answered with `200 OK` (or `204 No Content`), echoing these headers with an empty response body.
 
@@ -123,6 +127,7 @@ Handled by: `AuthServlet` (`/api/auth/*`)
 ```json
 {
   "message": "Login successful",
+  "csrfToken": "a1b2c3d4e5f6...",
   "user": {
     "id": 15,
     "fullName": "Ahmed Ali",
@@ -133,11 +138,12 @@ Handled by: `AuthServlet` (`/api/auth/*`)
   }
 }
 ```
-*Note:* The backend establishes an `HttpSession` with user ID and role attributes. Password hashes are never returned. Returns the full 6-field user object to maintain state consistency with `/auth/me`.
+*Note:* The backend regenerates the session ID (`request.changeSessionId()`), stores user ID, role, and a `SecureRandom` `csrfToken` in `HttpSession`. Password hashes are never returned.
 
 **Error Responses:**
 - `401 Unauthorized` (`INVALID_CREDENTIALS`): Incorrect email or password, or account status is `INACTIVE`.
 - `400 Bad Request` (`VALIDATION_ERROR`): Missing email or password.
+- `429 Too Many Requests` (`RATE_LIMIT_EXCEEDED`): Exceeded allowed failed login attempts.
 
 ---
 
@@ -146,7 +152,7 @@ Handled by: `AuthServlet` (`/api/auth/*`)
 **GET** `/auth/me`  
 **Access:** Authenticated (`MEMBER` or `ADMIN`)
 
-Used by both Member and Administrator dashboards upon page load or refresh to retrieve authenticated session user details.
+Used by both Member and Administrator dashboards upon page load or refresh to retrieve authenticated session user details and the existing session CSRF token.
 
 **Success Response — 200 OK:**
 ```json
@@ -156,13 +162,14 @@ Used by both Member and Administrator dashboards upon page load or refresh to re
   "email": "member@example.com",
   "phone": "12345678",
   "role": "MEMBER",
-  "accountStatus": "ACTIVE"
+  "accountStatus": "ACTIVE",
+  "csrfToken": "a1b2c3d4e5f6..."
 }
 ```
 
 *Note on Admin and Member Authorization:*
 - `/auth/me` is universally accessible to any authenticated session (both `MEMBER` and `ADMIN`).
-- The administrator dashboard uses `/auth/me` to identify the logged-in administrator.
+- Returns the existing `csrfToken` stored in `HttpSession` without regenerating it on every `/auth/me` request.
 
 **Error Responses:**
 - `401 Unauthorized` (`AUTHENTICATION_REQUIRED`): Session missing or expired.
@@ -172,7 +179,7 @@ Used by both Member and Administrator dashboards upon page load or refresh to re
 ### 3.3 Logout
 
 **POST** `/auth/logout`  
-**Access:** Authenticated (`MEMBER` or `ADMIN`)
+**Access:** Authenticated (`MEMBER` or `ADMIN`), requires valid `X-CSRF-TOKEN` header.
 
 **Success Response — 204 No Content**  
 The backend invalidates the session and expires the cookie.
@@ -256,8 +263,8 @@ Dedicated self-service operation for changing the account password.
 
 **Backend Enforcement:**
 1. Verifies `currentPassword` against stored BCrypt hash.
-2. Validates `newPassword`: Must be at least 6 characters in length and cannot contain whitespace.
-3. Hashes `newPassword` with BCrypt and updates database.
+2. Validates `newPassword`: Minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all character types allowed, no forced composition rules.
+3. Hashes `newPassword` with BCrypt (work factor 12) and updates database.
 4. Never exposes password hashes in responses.
 
 **Success Response — 200 OK:**
@@ -330,30 +337,34 @@ Used by the administrator when creating a member account after verifying physica
 **Mandatory Rule:**
 In accordance with project business rules, **the initial subscription and payment are strictly mandatory**. A member account cannot be created without an initial subscription. All 8 fields listed below are required. If any field is missing, the backend rejects the request with `400 Bad Request` (`VALIDATION_ERROR`).
 
-**Request Body (All Fields Required):**
+**Request Body (8 Mandatory Fields + 2 Optional Payment Fields):**
 ```json
 {
   "fullName": "Ahmed Ali",
   "email": "ahmed@example.com",
   "phone": "12345678",
-  "password": "initialPassword123",
+  "password": "my secure gym passphrase",
   "planId": 1,
   "startDate": "2026-11-26",
   "amount": 80.00,
-  "paymentDate": "2026-11-26"
+  "paymentDate": "2026-11-26",
+  "paymentMethod": "CASH",
+  "receiptNumber": "REC-2026-0001"
 }
 ```
+*Note:* `paymentMethod` (`CASH` or `CARD`, default `CASH`) and `receiptNumber` (nullable unique string) are optional.
 
 **Backend Enforcement (Atomic Transaction):**
-1. Validates all required fields are present and non-empty. Verifies password policy (minimum 6 characters, no whitespace).
+1. Validates all required fields are present and non-empty. Verifies password policy (minimum 12 characters, maximum 72 UTF-8 bytes, spaces and all character types allowed, no forced composition rules).
 2. Validates unique email across `users`.
 3. Verifies that `planId` references an active membership plan (`is_active = TRUE`) and retrieves `durationMonths`.
-4. Hashes password using BCrypt.
+4. Hashes password using BCrypt (work factor 12).
 5. Inserts into `users` (`role = 'MEMBER'`, `account_status = 'ACTIVE'`).
 6. Computes `endDate` from `startDate` using inclusive calendar range (`startDate.plusMonths(durationMonths).minusDays(1)`).
 7. Inserts into `subscriptions` (`user_id`, `plan_id`, `start_date`, `end_date`, `status = 'ACTIVE'`).
-8. Inserts into `payments` (`user_id`, `subscription_id`, `amount`, `payment_date`, `payment_status = 'PAID'`).
-9. Commits the transaction atomically. If any step fails, rolls back completely.
+8. Inserts into `payments` (`user_id`, `subscription_id`, `recorded_by_admin_id` derived from admin `HttpSession`, `amount`, `payment_method`, `payment_date`, `receipt_number`, `payment_status = 'PAID'`).
+9. Inserts an immutable `MEMBER_CREATED` record into `audit_logs` within the same transaction.
+10. Commits the transaction atomically. If any step fails, rolls back completely.
 
 **Success Response — 201 Created:**
 ```json
@@ -376,8 +387,11 @@ In accordance with project business rules, **the initial subscription and paymen
   },
   "payment": {
     "id": 1,
+    "recordedByAdminId": 1,
     "amount": 80.00,
+    "paymentMethod": "CASH",
     "paymentDate": "2026-11-26",
+    "receiptNumber": "REC-2026-0001",
     "paymentStatus": "PAID"
   }
 }
@@ -385,7 +399,8 @@ In accordance with project business rules, **the initial subscription and paymen
 
 **Error Responses:**
 - `409 Conflict` (`EMAIL_ALREADY_EXISTS`): Email already registered.
-- `400 Bad Request` (`VALIDATION_ERROR`): Missing required fields or negative amount.
+- `409 Conflict` (`RECEIPT_ALREADY_EXISTS`): Provided `receiptNumber` already exists on another payment record.
+- `400 Bad Request` (`VALIDATION_ERROR`): Missing required fields, weak password, or negative amount.
 
 ---
 
@@ -393,7 +408,7 @@ In accordance with project business rules, **the initial subscription and paymen
 
 **PUT** `/users/{id}`
 
-Allows the administrator to update member information including email, full name, phone, and role.
+Allows the administrator to update member information (`fullName`, `email`, `phone`, and optionally `role`). Prevents an administrator from demoting their own account. Duplicate email updates return `409 Conflict` (`EMAIL_ALREADY_EXISTS`).
 
 **Request Body:**
 ```json
@@ -425,6 +440,8 @@ Allows the administrator to update member information including email, full name
 
 **PUT** `/users/{id}/status`
 
+*Self-Deactivation Guard:* An administrator cannot deactivate their own account (`400 Bad Request` / `VALIDATION_ERROR`).
+
 **Request Body:**
 ```json
 {
@@ -450,6 +467,7 @@ Allows the administrator to update member information including email, full name
 **Behavior (Soft Delete Policy):**
 - Performs a soft delete by setting `account_status = 'INACTIVE'`.
 - Physical SQL `DELETE` is prohibited if the member has related records in `subscriptions`, `bookings`, or `payments`.
+- Prevents an administrator from soft-deleting their own account (`400 Bad Request` / `VALIDATION_ERROR`).
 - Returns `200 OK` confirming deactivation.
 
 **Success Response — 200 OK:**
@@ -806,18 +824,22 @@ Used for **subscription renewals** on an existing member account.
   "planId": 1,
   "startDate": "2026-12-01",
   "amount": 80.00,
-  "paymentDate": "2026-11-26"
+  "paymentDate": "2026-11-26",
+  "paymentMethod": "CASH",
+  "receiptNumber": "REC-2026-0002"
 }
 ```
+*Note:* `paymentMethod` (default `CASH`) and `receiptNumber` (nullable) are optional.
 
 **Backend Enforcement (Atomic Transaction):**
-1. Verifies member exists and is active.
+1. Verifies target user exists, has `role = 'MEMBER'`, and has `account_status = 'ACTIVE'`.
 2. Verifies plan is active and fetches `durationMonths`.
 3. Computes `endDate` from `startDate` using inclusive calendar range (`startDate.plusMonths(durationMonths).minusDays(1)`).
 4. Inserts new `subscriptions` record (`user_id`, `plan_id`, `start_date`, `end_date`, `status = 'ACTIVE'`).
-5. Inserts new `payments` record (`user_id`, `subscription_id`, `amount`, `payment_date`, `payment_status = 'PAID'`).
-6. Preserves existing subscription history.
-7. Commits transaction.
+5. Inserts new `payments` record (`user_id`, `subscription_id`, `recorded_by_admin_id` from admin session, `amount`, `payment_method`, `payment_date`, `receipt_number`, `payment_status = 'PAID'`).
+6. Inserts `SUBSCRIPTION_RENEWED` audit record into `audit_logs` within the same transaction.
+7. Preserves existing subscription history.
+8. Commits transaction.
 
 **Success Response — 201 Created:**
 ```json
@@ -833,8 +855,11 @@ Used for **subscription renewals** on an existing member account.
   },
   "payment": {
     "id": 2,
+    "recordedByAdminId": 1,
     "amount": 80.00,
+    "paymentMethod": "CASH",
     "paymentDate": "2026-11-26",
+    "receiptNumber": "REC-2026-0002",
     "paymentStatus": "PAID"
   }
 }
@@ -879,8 +904,11 @@ Returns all payment tracking records for administrative audit.
     "userId": 15,
     "userName": "Ahmed Ali",
     "subscriptionId": 1,
+    "recordedByAdminId": 1,
     "amount": 80.00,
+    "paymentMethod": "CASH",
     "paymentDate": "2026-11-26",
+    "receiptNumber": "REC-2026-0001",
     "paymentStatus": "PAID",
     "createdAt": "2026-11-26T09:00:00"
   }
@@ -900,8 +928,11 @@ Returns all payment tracking records for administrative audit.
   "userId": 15,
   "userName": "Ahmed Ali",
   "subscriptionId": 1,
+  "recordedByAdminId": 1,
   "amount": 80.00,
+  "paymentMethod": "CASH",
   "paymentDate": "2026-11-26",
+  "receiptNumber": "REC-2026-0001",
   "paymentStatus": "PAID",
   "createdAt": "2026-11-26T09:00:00"
 }
@@ -920,8 +951,11 @@ Returns all payment tracking records for administrative audit.
   "userId": 15,
   "userName": "Ahmed Ali",
   "subscriptionId": 1,
+  "recordedByAdminId": 1,
   "amount": 80.00,
+  "paymentMethod": "CASH",
   "paymentDate": "2026-11-26",
+  "receiptNumber": "REC-2026-0001",
   "paymentStatus": "PAID",
   "createdAt": "2026-11-26T09:00:00"
 }
@@ -1019,6 +1053,8 @@ A class has `isBookable: true` only if BOTH conditions hold:
 
 **PUT** `/classes/{id}`  
 **Access:** Administrator only (`ADMIN`)
+
+*Validation Rules:* Assigned `trainerId` must be active (`is_active = TRUE`), `endTime > startTime`, `capacity > 0`, and `capacity` cannot be reduced below the current `activeBookingsCount` (`400 VALIDATION_ERROR`).
 
 **Request Body:**
 ```json
@@ -1174,12 +1210,15 @@ Returns the authenticated member's booking history, including active (`BOOKED`) 
 **PUT** `/bookings/{id}/cancel`  
 **Access:** Member (own booking) or Administrator (`ADMIN`)
 
-**Backend Enforcement:**
-1. Verifies booking exists.
-2. If caller is `MEMBER`, verifies `booking.userId == session.user.id`. If not, returns `403 Forbidden` (`ACCESS_DENIED`).
-3. Updates `status = 'CANCELLED'`.
-4. The record is **never physically deleted**, preserving audit and personal booking history.
-5. Cancellation immediately releases one slot of class capacity.
+**Backend Enforcement (Transactional Parent-First Locking):**
+1. Begins transaction (`connection.setAutoCommit(false)`).
+2. Performs non-locking lookup to retrieve booking's `class_id` (returns `404 RESOURCE_NOT_FOUND` if missing).
+3. Locks parent `gym_classes` row first (`SELECT ... FOR UPDATE`), maintaining consistent lock hierarchy with booking creation.
+4. Locks `bookings` row (`SELECT ... FOR UPDATE`).
+5. If caller is `MEMBER`, verifies `booking.userId == session.user.id` (`403 ACCESS_DENIED` on mismatch).
+6. Verifies current status is `BOOKED` (if already `CANCELLED`, rolls back and returns `400 Bad Request` / `BOOKING_ALREADY_CANCELLED`).
+7. Updates `status = 'CANCELLED'` and commits. Supports bounded retry handling for transient MySQL deadlock errors (`Error 1213` / `SQLState 40001`).
+8. The record is **never physically deleted**, preserving audit and personal booking history, and releases one slot of class capacity.
 
 **Success Response — 200 OK:**
 ```json
@@ -1198,6 +1237,26 @@ Returns the authenticated member's booking history, including active (`BOOKED`) 
 **Access:** Administrator only (`ADMIN`)
 
 Returns all bookings across all members and classes with filters (`?classId=1`, `?status=BOOKED`).
+
+**Success Response — 200 OK:**
+```json
+[
+  {
+    "id": 5,
+    "userId": 15,
+    "userName": "Ahmed Ali",
+    "userEmail": "ahmed@example.com",
+    "classId": 1,
+    "className": "Morning HIIT",
+    "trainerName": "John Smith",
+    "classDate": "2026-11-28",
+    "startTime": "10:00:00",
+    "endTime": "11:00:00",
+    "bookingDate": "2026-11-26T14:30:00",
+    "status": "BOOKED"
+  }
+]
+```
 
 ---
 
@@ -1221,15 +1280,19 @@ All API errors return a standard JSON object accompanied by the corresponding HT
 | `400` | `VALIDATION_ERROR` | Request payload missing required fields or format invalid. |
 | `400` | `INVALID_CURRENT_PASSWORD` | Current password verification failed. |
 | `400` | `CLASS_NOT_BOOKABLE` | Class is cancelled, completed, or its scheduled time has already passed. |
+| `400` | `BOOKING_ALREADY_CANCELLED` | Booking has already been cancelled. |
 | `401` | `AUTHENTICATION_REQUIRED` | Valid session cookie missing or session has expired. |
 | `401` | `INVALID_CREDENTIALS` | Invalid email/password, or account is inactive. |
 | `403` | `ACCESS_DENIED` | Insufficient permissions for the requested resource. |
+| `403` | `CSRF_TOKEN_INVALID` | Missing or invalid `X-CSRF-TOKEN` header on mutating request. |
 | `403` | `SUBSCRIPTION_REQUIRED` | Member does not have a valid active subscription. |
 | `404` | `RESOURCE_NOT_FOUND` | Requested entity ID does not exist. |
 | `409` | `DUPLICATE_BOOKING` | Member already has an active booking for this class. |
 | `409` | `CLASS_FULL` | Class capacity has been reached. |
 | `409` | `EMAIL_ALREADY_EXISTS` | Email address is already in use by another user account. |
+| `409` | `RECEIPT_ALREADY_EXISTS` | Receipt number is already associated with another payment record. |
 | `409` | `CANNOT_DELETE_HISTORICAL_RECORD` | Foreign key constraints prevent physical deletion; soft delete applied. |
+| `429` | `RATE_LIMIT_EXCEEDED` | Too many failed login attempts; temporary cooldown active. |
 | `500` | `INTERNAL_SERVER_ERROR` | Unexpected server error or database query failure. |
 
 ---
